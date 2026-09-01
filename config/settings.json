@@ -1,0 +1,25 @@
+{
+  "browser": {
+    "headless": false,
+    "slowMo": 50,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "timeoutMs": 60000
+  },
+  "delays": {
+    "minTypingDelayMs": 80,
+    "maxTypingDelayMs": 220,
+    "minActionDelayMs": 3000,
+    "maxActionDelayMs": 7000,
+    "minBetweenAccountsDelayMs": 20000,
+    "maxBetweenAccountsDelayMs": 45000
+  },
+  "safety": {
+    "maxCommentsPerAccountPerDay": 10,
+    "stopOnError": false,
+    "screenshotOnError": true
+  }
+}

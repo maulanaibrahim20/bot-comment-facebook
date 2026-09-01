@@ -1,0 +1,24 @@
+[
+  {
+    "id": "acc_01",
+    "name": "Akun Contoh 1",
+    "username": "email_atau_username_1@gmail.com",
+    "password": "PasswordAkun123!",
+    "twoFactorSecret": "JBSWY3DPEHPK3PXP",
+    "proxy": {
+      "server": "http://127.0.0.1:8080",
+      "username": "proxy_user",
+      "password": "proxy_password"
+    },
+    "enabled": true
+  },
+  {
+    "id": "acc_02",
+    "name": "Akun Contoh 2",
+    "username": "email_atau_username_2@gmail.com",
+    "password": "PasswordAkun456!",
+    "twoFactorSecret": "",
+    "proxy": null,
+    "enabled": true
+  }
+]

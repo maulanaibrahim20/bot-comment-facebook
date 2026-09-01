@@ -1,0 +1,33 @@
+{
+  "name": "bot_facebook",
+  "version": "1.0.0",
+  "description": "Multi-Account Facebook Comment Bot with Playwright Stealth, Session Management, Spintax, and Proxy Support",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node src/test/test_utils.js"
+  },
+  "keywords": [
+    "facebook",
+    "bot",
+    "playwright",
+    "stealth",
+    "spintax",
+    "multi-account",
+    "automation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.5",
+    "dotenv": "^16.4.5",
+    "inquirer": "^9.2.23",
+    "otplib": "^12.0.1",
+    "playwright": "^1.49.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "winston": "^3.17.0"
+  }
+}

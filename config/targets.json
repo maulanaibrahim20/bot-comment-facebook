@@ -1,0 +1,9 @@
+[
+  {
+    "id": "target_01",
+    "postUrl": "https://www.facebook.com/zuck/posts/example-post-id",
+    "commentTemplate": "{Halo|Hai|Permisi} kak, {terima kasih infonya|menarik sekali|sangat bermanfaat}! {Cek profil kami ya untuk info lebih lanjut|Yuk mampir ke profil kami|Salam kenal ya kak!}",
+    "description": "Postingan target promosi 1",
+    "active": true
+  }
+]
