@@ -1,0 +1,10 @@
+{
+  "botToken": "MASUKKAN_BOT_TOKEN_DARI_BOTFATHER_DISINI",
+  "allowedUsers": [],
+  "defaultSettings": {
+    "feedCommentTemplate": "{Halo|Hai|Permisi} kak, {keren infonya|menarik sekali|luar biasa}! {Cek link channel ya|Salam sukses}: https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R",
+    "reelsCommentTemplate": "{Halo|Hai|Permisi} kak, {keren banget videonya|menarik sekali|suka videonya}! {Salam sukses ya}: https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R",
+    "defaultDelaySeconds": 15,
+    "concurrency": 1
+  }
+}

@@ -47,7 +47,8 @@ export async function showMainMenu() {
         { name: '5. 🎬 Komentar di Facebook REELS (Video Pendek Non-Stop)', value: 'RUN_RANDOM_REELS' },
         { name: '6. 🎯 Komentar di URL Postingan Target Tertentu', value: 'RUN_TARGET_CAMPAIGN' },
         { name: '7. 🧪 Test & Preview Spintax Komentar', value: 'TEST_SPINTAX' },
-        { name: '8. ❌ Keluar', value: 'EXIT' }
+        { name: '8. 📱 Jalankan Telegram Bot Controller (Kontrol via HP)', value: 'RUN_TELEGRAM' },
+        { name: '9. ❌ Keluar', value: 'EXIT' }
       ]
     }
   ]);
@@ -74,10 +75,16 @@ export async function showMainMenu() {
     case 'TEST_SPINTAX':
       await handleTestSpintax();
       break;
+    case 'RUN_TELEGRAM':
+      console.log(chalk.cyan('\n🚀 Menjalankan Telegram Bot Controller...'));
+      console.log(chalk.gray('Tekan Ctrl + C untuk kembali/keluar.'));
+      await import('./telegram/bot.js');
+      return;
     case 'EXIT':
       console.log(chalk.green('Sampai jumpa!'));
       process.exit(0);
   }
+
 
 
   console.log('\n');
