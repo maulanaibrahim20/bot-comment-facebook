@@ -141,24 +141,26 @@ export function hasAccountSession(accountId) {
   return fs.existsSync(jsonPath);
 }
 
-export function deleteAccount(accountId) {
+export function deleteAccount(accountId, deleteSession = true) {
   let accounts = getAccounts();
   accounts = accounts.filter((a) => a.id !== accountId);
   saveAccounts(accounts);
 
-  // Hapus file json session dan direktori profile jika ada
-  const sessionPath = paths.getSessionFilePath(accountId);
-  if (fs.existsSync(sessionPath)) {
-    try {
-      fs.unlinkSync(sessionPath);
-    } catch (e) {}
-  }
+  if (deleteSession) {
+    // Hapus file json session dan direktori profile jika ada
+    const sessionPath = paths.getSessionFilePath(accountId);
+    if (fs.existsSync(sessionPath)) {
+      try {
+        fs.unlinkSync(sessionPath);
+      } catch (e) {}
+    }
 
-  const profileDir = paths.getProfileDir(accountId);
-  if (fs.existsSync(profileDir)) {
-    try {
-      fs.rmSync(profileDir, { recursive: true, force: true });
-    } catch (e) {}
+    const profileDir = paths.getProfileDir(accountId);
+    if (fs.existsSync(profileDir)) {
+      try {
+        fs.rmSync(profileDir, { recursive: true, force: true });
+      } catch (e) {}
+    }
   }
 
   return accounts;

@@ -248,8 +248,21 @@ async function handleDeleteAccount() {
 
   if (accountId === 'CANCEL') return;
 
-  deleteAccount(accountId);
-  logger.success(`Akun [${accountId}] dan file sesinya berhasil dihapus.`);
+  const { deleteSession } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'deleteSession',
+      message: 'Hapus file sesi & direktori profil browser akun ini juga?',
+      default: true
+    }
+  ]);
+
+  deleteAccount(accountId, deleteSession);
+  if (deleteSession) {
+    logger.success(`Akun [${accountId}] dan file sesinya berhasil dihapus.`);
+  } else {
+    logger.success(`Akun [${accountId}] berhasil dihapus (file sesi tetap disimpan).`);
+  }
 }
 
 /**

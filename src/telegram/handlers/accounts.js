@@ -1,0 +1,294 @@
+import { Markup } from "telegraf";
+import { getAccounts, hasAccountSession, bulkImportAccounts, deleteAccount } from "../../config.js";
+import { SessionManager } from "../../core/sessionManager.js";
+import { userStates, campaignState } from "../state.js";
+import { getRunningKeyboard } from "../keyboards.js";
+import { executeLoginAccounts } from "../services/loginService.js";
+
+export function registerAccountHandlers(bot) {
+  bot.hears("👥 Daftar Akun Facebook", async (ctx) => {
+    if (campaignState.isRunning) {
+      return ctx.reply(
+        "⚠️ Bot sedang berjalan! Gunakan menu ini saat bot dalam keadaan standby.",
+        getRunningKeyboard()
+      );
+    }
+
+    userStates.delete(ctx.from.id);
+    const accounts = getAccounts();
+    if (accounts.length === 0) {
+      return ctx.replyWithMarkdown(
+        "⚠️ Belum ada akun terdaftar di sistem.\n\nKlik tombol di bawah atau ketik `/addaccount email|password` untuk menambah akun.",
+        Markup.inlineKeyboard([
+          [Markup.button.callback("➕ Tambah Akun Baru", "TRIGGER_ADD_ACCOUNT")]
+        ])
+      );
+    }
+
+    let text = `👥 *Daftar Akun Facebook Terdaftar (${accounts.length}):*\n\n`;
+    accounts.forEach((acc, i) => {
+      const hasSession = hasAccountSession(acc.id);
+      const sessionEmoji = hasSession ? "✅ Login Tersimpan" : "❌ Belum Login";
+      text += `${i + 1}. *[${acc.id}]* ${acc.username}\n   └ Status: ${sessionEmoji} | 2FA: ${acc.twoFactorSecret ? "Ada" : "-"}\n\n`;
+    });
+
+    await ctx.replyWithMarkdown(
+      text,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("➕ Tambah Akun", "TRIGGER_ADD_ACCOUNT"),
+          Markup.button.callback("🔑 Login Akun", "TRIGGER_LOGIN_MENU")
+        ],
+        [
+          Markup.button.callback("🗑️ Hapus Akun", "TRIGGER_DELETE_MENU")
+        ]
+      ])
+    );
+  });
+
+  bot.action("TRIGGER_ADD_ACCOUNT", async (ctx) => {
+    await ctx.answerCbQuery();
+    userStates.set(ctx.from.id, "AWAITING_NEW_ACCOUNT");
+    await ctx.replyWithMarkdown(
+      `➕ *Tambah Akun Facebook Baru*\n\n` +
+        `Silakan kirimkan data akun dengan format:\n` +
+        `\`email|password\`\n` +
+        `atau dengan 2FA secret (jika ada):\n` +
+        `\`email|password|2FA_SECRET\`\n\n` +
+        `_Bisa kirim banyak akun sekaligus (1 baris per akun)._`
+    );
+  });
+
+  bot.action("TRIGGER_LOGIN_MENU", async (ctx) => {
+    await ctx.answerCbQuery();
+    const accounts = getAccounts();
+    if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
+
+    const buttons = accounts.map((acc) => {
+      const hasSession = hasAccountSession(acc.id);
+      const sessionEmoji = hasSession ? "✅" : "🔑";
+      return [
+        Markup.button.callback(
+          `${sessionEmoji} Login [${acc.id}] (${acc.username})`,
+          `LOGIN_${acc.id}`
+        )
+      ];
+    });
+
+    if (accounts.length > 1) {
+      buttons.push([
+        Markup.button.callback("🔑 Login Semua Akun Sekaligus", "LOGIN_all")
+      ]);
+    }
+
+    await ctx.replyWithMarkdown(
+      `🔑 *Pilih Akun yang Ingin di-Login:*\n\n` +
+        `_Silakan pilih akun yang ingin Anda login-kan satu per satu:_`,
+      Markup.inlineKeyboard(buttons)
+    );
+  });
+
+  bot.action(/LOGIN_(.+)/, async (ctx) => {
+    const targetId = ctx.match[1];
+    await ctx.answerCbQuery();
+    executeLoginAccounts(ctx, targetId);
+  });
+
+  bot.command("addaccount", async (ctx) => {
+    if (campaignState.isRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
+    const text = ctx.message.text.replace("/addaccount", "").trim();
+    if (!text) {
+      return ctx.reply(
+        "Format: /addaccount email|password|2fa_secret\nContoh: /addaccount user@gmail.com|pass123|JBSWY3DPEHPK3PXP"
+      );
+    }
+    const imported = bulkImportAccounts(text);
+    if (imported.length > 0) {
+      await ctx.replyWithMarkdown(
+        `✅ *Berhasil menambahkan ${imported.length} akun!*\n${imported
+          .map((a) => `• *[${a.id}]* ${a.username}`)
+          .join(
+            "\n"
+          )}\n\nKetik \`/login all\` atau klik menu '👥 Daftar Akun Facebook' untuk login.`
+      );
+    } else {
+      await ctx.reply(
+        "⚠️ Format tidak valid. Gunakan format: email|password atau email|password|2fa_secret"
+      );
+    }
+  });
+
+  bot.command("login", async (ctx) => {
+    if (campaignState.isRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
+    const parts = ctx.message.text.split(" ");
+    const targetId = parts[1]?.trim() || "all";
+    executeLoginAccounts(ctx, targetId);
+  });
+
+  bot.hears("🩺 Cek Status Sesi", async (ctx) => {
+    if (campaignState.isRunning) {
+      return ctx.reply(
+        "⚠️ Bot sedang berjalan! Cek status sesi hanya dapat dilakukan saat bot standby.",
+        getRunningKeyboard()
+      );
+    }
+
+    userStates.delete(ctx.from.id);
+    const accounts = getAccounts();
+    if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
+
+    await ctx.reply(
+      "🔍 Sedang memverifikasi status sesi semua akun di Facebook (mohon tunggu)..."
+    );
+    for (const acc of accounts) {
+      const res = await SessionManager.verifySession(acc);
+      const statusText = res.isValid
+        ? "✅ Sesi AKTIF & Valid"
+        : "❌ Sesi KADALUARSA / Checkpoint";
+      await ctx.reply(`Account [${acc.id}] (${acc.username}):\n${statusText}`);
+    }
+  });
+
+  // Menu Pemilihan Akun yang Ingin Dihapus
+  bot.action("TRIGGER_DELETE_MENU", async (ctx) => {
+    await ctx.answerCbQuery();
+    if (campaignState.isRunning) {
+      return ctx.reply("⚠️ Bot sedang berjalan! Hapus akun hanya dapat dilakukan saat bot standby.", getRunningKeyboard());
+    }
+
+    const accounts = getAccounts();
+    if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
+
+    const buttons = accounts.map((acc) => [
+      Markup.button.callback(`🗑️ Hapus [${acc.id}] (${acc.username})`, `CONFIRM_DEL_${acc.id}`)
+    ]);
+    buttons.push([Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")]);
+
+    await ctx.replyWithMarkdown(
+      `🗑️ *Pilih Akun yang Ingin Dihapus:*\n\n` +
+        `_Pilih salah satu akun di bawah untuk memilih opsi penghapusan (dengan atau tanpa sesi login Facebook):_`,
+      Markup.inlineKeyboard(buttons)
+    );
+  });
+
+  // Tampilkan Opsi Penghapusan (Dengan Sesi atau Tanpa Sesi)
+  bot.action(/CONFIRM_DEL_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    await ctx.answerCbQuery();
+    if (campaignState.isRunning) {
+      return ctx.reply("⚠️ Bot sedang berjalan!", getRunningKeyboard());
+    }
+
+    const accounts = getAccounts();
+    const target = accounts.find((a) => a.id === accountId);
+    if (!target) return ctx.reply("⚠️ Akun tidak ditemukan.");
+
+    const hasSession = hasAccountSession(accountId);
+
+    await ctx.replyWithMarkdown(
+      `⚠️ *Konfirmasi Hapus Akun Facebook*\n\n` +
+        `• *ID Akun:* \`${target.id}\`\n` +
+        `• *Username:* *${target.username}*\n` +
+        `• *Status Sesi:* ${hasSession ? "✅ Ada file sesi login tersimpan" : "❌ Tidak ada sesi"}\n\n` +
+        `Silakan pilih opsi penghapusan:\n` +
+        `1. *Hapus Akun + Sesi*: Menghapus akun dari sistem dan menghapus file sesi & profil browser secara permanen.\n` +
+        `2. *Hapus Akun Saja*: Menghapus akun dari sistem tetapi file sesi profil browser tetap disimpan di server.`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("🗑️ Hapus Akun + Sesi Browser", `EXEC_DEL_${accountId}_WITH_SESSION`)
+        ],
+        [
+          Markup.button.callback("📄 Hapus Akun Saja (Simpan Sesi)", `EXEC_DEL_${accountId}_NO_SESSION`)
+        ],
+        [
+          Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")
+        ]
+      ])
+    );
+  });
+
+  // Eksekusi Penghapusan Akun
+  bot.action(/EXEC_DEL_(.+)_(WITH_SESSION|NO_SESSION)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    const mode = ctx.match[2];
+    const deleteSession = mode === "WITH_SESSION";
+
+    await ctx.answerCbQuery();
+    if (campaignState.isRunning) {
+      return ctx.reply("⚠️ Bot sedang berjalan!", getRunningKeyboard());
+    }
+
+    const accounts = getAccounts();
+    const target = accounts.find((a) => a.id === accountId);
+    const username = target ? target.username : accountId;
+
+    deleteAccount(accountId, deleteSession);
+
+    if (deleteSession) {
+      await ctx.replyWithMarkdown(
+        `✅ *Akun [${accountId}] (${username}) BERHASIL DIHAPUS!*\n\n` +
+          `File sesi dan direktori profil browser juga telah dibersihkan secara permanen.`
+      );
+    } else {
+      await ctx.replyWithMarkdown(
+        `✅ *Akun [${accountId}] (${username}) BERHASIL DIHAPUS!*\n\n` +
+          `File sesi browser tetap tersimpan di server jika Anda ingin mendaftarkannya kembali nanti.`
+      );
+    }
+  });
+
+  // Batalkan Aksi Akun
+  bot.action("CANCEL_ACCOUNT_ACTION", async (ctx) => {
+    await ctx.answerCbQuery("Aksi dibatalkan");
+    await ctx.reply("ℹ️ Aksi dibatalkan.");
+  });
+
+  // Command /deleteaccount <acc_id>
+  bot.command("deleteaccount", async (ctx) => {
+    if (campaignState.isRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
+    const parts = ctx.message.text.split(" ");
+    const targetId = parts[1]?.trim();
+
+    const accounts = getAccounts();
+    if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
+
+    if (!targetId) {
+      const buttons = accounts.map((acc) => [
+        Markup.button.callback(`🗑️ Hapus [${acc.id}] (${acc.username})`, `CONFIRM_DEL_${acc.id}`)
+      ]);
+      buttons.push([Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")]);
+
+      return ctx.replyWithMarkdown(
+        `🗑️ *Hapus Akun Facebook*\n\n` +
+          `Silakan pilih akun yang ingin dihapus:\n` +
+          `_(Atau ketik langsung: \`/deleteaccount <id_akun>\`)_`,
+        Markup.inlineKeyboard(buttons)
+      );
+    }
+
+    const target = accounts.find((a) => a.id === targetId || a.username === targetId);
+    if (!target) {
+      return ctx.reply(`⚠️ Akun "${targetId}" tidak ditemukan.`);
+    }
+
+    const hasSession = hasAccountSession(target.id);
+    await ctx.replyWithMarkdown(
+      `⚠️ *Konfirmasi Hapus Akun Facebook*\n\n` +
+        `• *ID Akun:* \`${target.id}\`\n` +
+        `• *Username:* *${target.username}*\n` +
+        `• *Status Sesi:* ${hasSession ? "✅ Ada file sesi login tersimpan" : "❌ Tidak ada sesi"}\n\n` +
+        `Silakan pilih opsi penghapusan:`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("🗑️ Hapus Akun + Sesi Browser", `EXEC_DEL_${target.id}_WITH_SESSION`)
+        ],
+        [
+          Markup.button.callback("📄 Hapus Akun Saja (Simpan Sesi)", `EXEC_DEL_${target.id}_NO_SESSION`)
+        ],
+        [
+          Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")
+        ]
+      ])
+    );
+  });
+}
