@@ -2,8 +2,9 @@ import { Telegraf, Markup } from "telegraf";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { paths, getAccounts, hasAccountSession } from "../config.js";
+import { paths, getAccounts, hasAccountSession, addAccount, bulkImportAccounts } from "../config.js";
 import { Commenter } from "../core/commenter.js";
+
 import { SessionManager } from "../core/sessionManager.js";
 import { logger } from "../utils/logger.js";
 
@@ -272,7 +273,12 @@ bot.hears("👥 Daftar Akun Facebook", async (ctx) => {
   userStates.delete(ctx.from.id);
   const accounts = getAccounts();
   if (accounts.length === 0) {
-    return ctx.reply("⚠️ Belum ada akun terdaftar di sistem.");
+    return ctx.replyWithMarkdown(
+      "⚠️ Belum ada akun terdaftar di sistem.\n\nKlik tombol di bawah atau ketik `/addaccount email|password` untuk menambah akun.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("➕ Tambah Akun Baru", "TRIGGER_ADD_ACCOUNT")]
+      ])
+    );
   }
 
   let text = `👥 *Daftar Akun Facebook Terdaftar (${accounts.length}):*\n\n`;
@@ -282,8 +288,155 @@ bot.hears("👥 Daftar Akun Facebook", async (ctx) => {
     text += `${i + 1}. *[${acc.id}]* ${acc.username}\n   └ Status: ${sessionEmoji} | 2FA: ${acc.twoFactorSecret ? "Ada" : "-"}\n\n`;
   });
 
-  await ctx.replyWithMarkdown(text);
+  await ctx.replyWithMarkdown(
+    text,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("➕ Tambah Akun Baru", "TRIGGER_ADD_ACCOUNT"), Markup.button.callback("🔑 Login Akun (Pilih Akun)", "TRIGGER_LOGIN_MENU")]
+    ])
+  );
 });
+
+bot.action("TRIGGER_ADD_ACCOUNT", async (ctx) => {
+  await ctx.answerCbQuery();
+  userStates.set(ctx.from.id, "AWAITING_NEW_ACCOUNT");
+  await ctx.replyWithMarkdown(
+    `➕ *Tambah Akun Facebook Baru*\n\n` +
+    `Silakan kirimkan data akun dengan format:\n` +
+    `\`email|password\`\n` +
+    `atau dengan 2FA secret (jika ada):\n` +
+    `\`email|password|2FA_SECRET\`\n\n` +
+    `_Bisa kirim banyak akun sekaligus (1 baris per akun)._`
+  );
+});
+
+bot.action("TRIGGER_LOGIN_MENU", async (ctx) => {
+  await ctx.answerCbQuery();
+  const accounts = getAccounts();
+  if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
+
+  const buttons = accounts.map(acc => {
+    const hasSession = hasAccountSession(acc.id);
+    const sessionEmoji = hasSession ? "✅" : "🔑";
+    return [Markup.button.callback(`${sessionEmoji} Login [${acc.id}] (${acc.username})`, `LOGIN_${acc.id}`)];
+  });
+
+  if (accounts.length > 1) {
+    buttons.push([Markup.button.callback("🔑 Login Semua Akun Sekaligus", "LOGIN_all")]);
+  }
+
+  await ctx.replyWithMarkdown(
+    `🔑 *Pilih Akun yang Ingin di-Login:*\n\n` +
+    `_Silakan pilih akun yang ingin Anda login-kan satu per satu:_`,
+    Markup.inlineKeyboard(buttons)
+  );
+});
+
+bot.action(/LOGIN_(.+)/, async (ctx) => {
+  const targetId = ctx.match[1];
+  await ctx.answerCbQuery();
+  executeLoginAccounts(ctx, targetId);
+});
+
+bot.command("addaccount", async (ctx) => {
+  if (isCampaignRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
+  const text = ctx.message.text.replace("/addaccount", "").trim();
+  if (!text) {
+    return ctx.reply("Format: /addaccount email|password|2fa_secret\nContoh: /addaccount user@gmail.com|pass123|JBSWY3DPEHPK3PXP");
+  }
+  const imported = bulkImportAccounts(text);
+  if (imported.length > 0) {
+    await ctx.replyWithMarkdown(`✅ *Berhasil menambahkan ${imported.length} akun!*\n${imported.map(a => `• *[${a.id}]* ${a.username}`).join('\n')}\n\nKetik \`/login all\` atau klik menu '👥 Daftar Akun Facebook' untuk login.`);
+  } else {
+    await ctx.reply("⚠️ Format tidak valid. Gunakan format: email|password atau email|password|2fa_secret");
+  }
+});
+
+bot.command("login", async (ctx) => {
+  if (isCampaignRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
+  const parts = ctx.message.text.split(" ");
+  const targetId = parts[1]?.trim() || "all";
+  executeLoginAccounts(ctx, targetId);
+});
+
+// Penyimpanan sementara kode OTP manual yang dikirim user via chat Telegram
+const manualOtpStore = new Map();
+
+async function executeLoginAccounts(ctx, targetId = "all") {
+  const accounts = getAccounts();
+  const targetAccounts = targetId && targetId !== "all" 
+    ? accounts.filter(a => a.id === targetId || a.username === targetId)
+    : accounts;
+
+  if (targetAccounts.length === 0) {
+    return ctx.reply("Akun tidak ditemukan. Gunakan /login acc_01 atau /login all");
+  }
+
+  isCampaignRunning = true;
+  await ctx.replyWithMarkdown(
+    `🔑 *Memulai Proses Login (${targetAccounts.length} Akun)*\n\n` +
+    `_Jika Facebook meminta kode OTP atau persetujuan HP, bot akan mengirimkan screenshot foto layar Facebook langsung ke chat ini._`,
+    getRunningKeyboard()
+  );
+
+  try {
+    for (const acc of targetAccounts) {
+      if (!isCampaignRunning) break;
+      await ctx.reply(`🌐 [${acc.id}] Membuka browser Facebook untuk ${acc.username}...`);
+
+      const onProgress = async (type, data) => {
+        try {
+          if (type === 'WAITING_APPROVAL') {
+            await ctx.reply(`📱 [${data.accountId}] Menunggu persetujuan di HP... (${data.remainingSec}s tersisa)`);
+          } else if (type === 'CHECKPOINT_SCREENSHOT') {
+            userStates.set(ctx.from.id, { state: "AWAITING_LOGIN_OTP", accountId: data.accountId });
+            if (fs.existsSync(data.screenshotPath)) {
+              await ctx.replyWithPhoto(
+                { source: data.screenshotPath },
+                {
+                  caption: `📱 *[${data.accountId}] Layar Verifikasi Facebook*\n\n` +
+                    `1. Buka aplikasi Facebook di HP Anda dan klik 'Ya, ini saya'.\n` +
+                    `2. Atau jika ada kode OTP 6-digit, *langsung balas chat ini dengan angka OTP Anda* (misal: \`123456\`).\n\n` +
+                    `_Bot sedang menunggu persetujuan Anda..._`,
+                  parse_mode: 'Markdown'
+                }
+              );
+            }
+          }
+        } catch (e) {}
+      };
+
+      const res = await SessionManager.loginAccount(acc, {
+        headless: true,
+        maxWaitSeconds: 90,
+        shouldStop: () => !isCampaignRunning,
+        onProgress,
+        getManualOtp: (accId) => {
+          if (manualOtpStore.has(accId)) {
+            const otp = manualOtpStore.get(accId);
+            manualOtpStore.delete(accId);
+            return otp;
+          }
+          return null;
+        }
+      });
+
+      userStates.delete(ctx.from.id);
+
+      if (res.success) {
+        await ctx.replyWithMarkdown(`🎉 *[${acc.id}] LOGIN BERHASIL!*\nSesi profil telah tersimpan secara permanen.`);
+      } else {
+        await ctx.reply(`⚠️ [${acc.id}] Login belum berhasil: ${res.reason || 'Waktu tunggu habis'}`);
+      }
+    }
+  } catch (err) {
+    await ctx.reply(`❌ Terjadi error: ${err.message}`);
+  } finally {
+    isCampaignRunning = false;
+    await ctx.reply("🏁 Proses login selesai.", getMainKeyboard());
+  }
+}
+
+
 
 bot.hears("🩺 Cek Status Sesi", async (ctx) => {
   if (isCampaignRunning) {
@@ -626,13 +779,28 @@ bot.command("stop", async (ctx) => {
   await ctx.reply("🛑 Perintah STOP diterima! Menghentikan bot dan menutup browser...", getMainKeyboard());
 });
 
-// Handler Teks Masuk Umum (untuk menangani update komentar custom & delay manual)
+// Handler Teks Masuk Umum (untuk menangani update komentar custom, delay manual, dan OTP login)
 bot.on("text", async (ctx, next) => {
+  const stateObj = userStates.get(ctx.from.id);
+
+  // Jika sedang menunggu input kode OTP saat login
+  if (stateObj && typeof stateObj === 'object' && stateObj.state === "AWAITING_LOGIN_OTP") {
+    const inputOtp = ctx.message.text.trim();
+    if (/^\d{4,8}$/.test(inputOtp)) {
+      manualOtpStore.set(stateObj.accountId, inputOtp);
+      await ctx.reply(`🔢 Menerima kode OTP: ${inputOtp}. Sedang memasukkan ke layar Facebook...`);
+      return;
+    } else {
+      return ctx.reply("⚠️ Kode OTP harus berupa angka (misal: 123456). Silakan ketik ulang:");
+    }
+  }
+
   if (isCampaignRunning) {
     return ctx.reply("⚠️ Bot sedang berjalan aktif! Perintah ubah teks dikunci. Tekan '🛑 Stop Kampanye' jika ingin membatalkan.", getRunningKeyboard());
   }
 
-  const state = userStates.get(ctx.from.id);
+  const state = stateObj;
+
   if (state === "AWAITING_CUSTOM_COMMENT") {
     userStates.delete(ctx.from.id);
     const newComment = ctx.message.text.trim();
@@ -669,7 +837,24 @@ bot.on("text", async (ctx, next) => {
     );
   }
 
+  if (state === "AWAITING_NEW_ACCOUNT") {
+    userStates.delete(ctx.from.id);
+    const data = ctx.message.text.trim();
+    const imported = bulkImportAccounts(data);
+    if (imported.length > 0) {
+      return ctx.replyWithMarkdown(
+        `✅ *Berhasil menambahkan ${imported.length} akun!*\n` +
+        `${imported.map(a => `• *[${a.id}]* ${a.username}`).join('\n')}\n\n` +
+        `Ketik \`/login all\` untuk melakukan login otomatis, atau buka menu '👥 Daftar Akun Facebook'.`,
+        getMainKeyboard()
+      );
+    } else {
+      return ctx.reply("⚠️ Format tidak valid. Gunakan format: email|password atau email|password|2fa_secret", getMainKeyboard());
+    }
+  }
+
   return next();
+
 });
 
 // Jalankan Bot Telegram jika dijalankan langsung

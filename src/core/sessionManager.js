@@ -191,22 +191,66 @@ export class SessionManager {
       // 6. Loop Pemantauan Persetujuan Login (Polling c_user & Checkpoint Removal)
       logger.account(account.id, 'Memantau status login (menunggu persetujuan HP / 2FA)...');
       let isSuccess = false;
+      let hasSentCheckpointScreenshot = false;
       const startTime = Date.now();
       let lastLogTime = 0;
 
       while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
+        if (options.shouldStop && options.shouldStop()) {
+          logger.info(`[${account.id}] Proses login dihentikan oleh pengguna.`);
+          break;
+        }
+
         await randomDelay(2000, 3000);
 
         // Log info berkala setiap 15 detik agar user tahu bot masih menunggu
         if (Date.now() - lastLogTime > 15000) {
           const remainingSec = Math.round((maxWaitSeconds * 1000 - (Date.now() - startTime)) / 1000);
           logger.account(account.id, `Sedang menunggu persetujuan di HP... (Tersisa waktu tunggu: ${remainingSec}s)`);
+          if (options.onProgress) {
+            await options.onProgress('WAITING_APPROVAL', { accountId: account.id, remainingSec });
+          }
           lastLogTime = Date.now();
         }
 
-        // Cek jika ada input kode 2FA otomatis
+        // Cek jika ada layar 2FA / Checkpoint
         const is2FA = page.url().includes('checkpoint') || 
           await page.locator('input[name="approvals_code"], input[id="approvals_code"], input[placeholder*="Code"], input[placeholder*="Kode"]').first().isVisible().catch(() => false);
+
+        // Kirim screenshot checkpoint sekali ke Telegram agar user bisa melihat langsung
+        if (is2FA && !hasSentCheckpointScreenshot) {
+          hasSentCheckpointScreenshot = true;
+          const checkpointScreenshot = path.join(paths.logsDir, `checkpoint_${account.id}_${Date.now()}.png`);
+          await page.screenshot({ path: checkpointScreenshot }).catch(() => {});
+          if (options.onProgress) {
+            await options.onProgress('CHECKPOINT_SCREENSHOT', {
+              accountId: account.id,
+              screenshotPath: checkpointScreenshot
+            });
+          }
+        }
+
+        // Cek jika ada input kode OTP manual yang dikirimkan user via Telegram
+        if (options.getManualOtp) {
+          const manualOtp = options.getManualOtp(account.id);
+          if (manualOtp) {
+            logger.account(account.id, `Memasukkan kode OTP manual (${manualOtp})...`);
+            const otpInput = page.locator('input[name="approvals_code"], input[id="approvals_code"], input[type="number"], input[type="text"]').first();
+            if (await otpInput.isVisible().catch(() => false)) {
+              await otpInput.click({ force: true });
+              await typeHumanLike(page, otpInput, manualOtp);
+              await randomDelay(800, 1500);
+
+              const submitOtpBtn = page.locator('button[type="submit"], button#checkpointSubmitButton, button:has-text("Continue"), button:has-text("Lanjutkan")').first();
+              if (await submitOtpBtn.isVisible().catch(() => false)) {
+                await submitOtpBtn.click({ force: true });
+              } else {
+                await otpInput.press('Enter');
+              }
+              await randomDelay(3000, 5000);
+            }
+          }
+        }
 
         if (is2FA && account.twoFactorSecret) {
           const otpCode = generate2FACode(account.twoFactorSecret);
@@ -228,6 +272,7 @@ export class SessionManager {
             }
           }
         }
+
 
         // Auto klik dialog "Lain Kali / Not Now / Simpan Info Login"
         const notNowButtons = [
