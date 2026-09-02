@@ -3,3 +3,5 @@ sessions/
 logs/
 .env
 config/accounts.json
+config/telegram.json
+

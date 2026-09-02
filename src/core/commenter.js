@@ -286,7 +286,7 @@ export class Commenter {
   /**
    * Menemukan tombol komentar pada postingan baru di Beranda (Feed), mengetikkan teks, memvalidasi pengiriman, dan menutup modal
    */
-  static async executeCommentOnNextFeedPost(page, commentText, processedSet, minDelay, maxDelay) {
+  static async executeCommentOnNextFeedPost(page, commentText, processedSet, minDelay, maxDelay, onProgress) {
     await Commenter.closePostModalIfOpen(page);
 
     // Cek apakah akun terblokir
@@ -369,6 +369,8 @@ export class Commenter {
     await randomDelay(800, 1500);
 
     logger.info(`Mengetikkan komentar: "${commentText}"`);
+    if (onProgress) await onProgress('TYPING', { commentText });
+
     await typeHumanLike(page, targetCommentBox, commentText, minDelay, maxDelay);
     await randomDelay(1500, 2500);
 
@@ -432,8 +434,11 @@ export class Commenter {
     const isUnlimited = (countToComment === 0 || countToComment === -1);
     const targetCountText = isUnlimited ? '🔥 Tanpa Batas (Non-Stop Loop)' : `${countToComment} komentar`;
     const template = options.commentTemplate || '{Halo|Hai|Permisi} kak, {menarik sekali|luar biasa|bagus infonya}! {Salam sukses|Salam kenal ya}.';
+    const shouldStop = typeof options.shouldStop === 'function' ? options.shouldStop : () => false;
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
 
     logger.account(account.id, `Membuka Beranda Facebook untuk mencari postingan (Target: ${targetCountText})...`);
+    if (onProgress) await onProgress('START', { accountId: account.id, target: targetCountText });
 
     let browserInstance;
     try {
@@ -455,12 +460,13 @@ export class Commenter {
 
       const isLogged = await Commenter.ensureLoggedIn(account, context, page);
       if (!isLogged) {
-        logger.warn(`[${account.id}] Akun belum berhasil login ke Facebook. Pastikan username dan password sudah benar.`);
+        logger.warn(`[${account.id}] Akun belum berhasil login ke Facebook.`);
         await close();
         return { success: false, reason: 'NOT_LOGGED_IN' };
       }
 
-      logger.account(account.id, 'Berhasil masuk ke Beranda Facebook. Mulai mencari postingan untuk dikomentari...');
+      logger.account(account.id, 'Berhasil masuk ke Beranda Facebook. Mulai mencari postingan...');
+      if (onProgress) await onProgress('LOGGED_IN', { accountId: account.id });
       await randomDelay(2000, 4000);
 
       let commentedCount = 0;
@@ -468,19 +474,19 @@ export class Commenter {
       const maxAttempts = isUnlimited ? 999999 : (countToComment * 25);
 
       while ((isUnlimited || commentedCount < countToComment) && attempts < maxAttempts) {
+        if (shouldStop()) {
+          logger.info(`[${account.id}] Bot dihentikan oleh pengguna (STOP).`);
+          if (onProgress) await onProgress('STOPPED', { accountId: account.id, totalCommented: commentedCount });
+          break;
+        }
+
         attempts++;
         await Commenter.closePostModalIfOpen(page);
 
         // Cek apakah akun terblokir
         if (await Commenter.checkIsActionBlocked(page)) {
-          console.log(chalk.red.bold(`
-===================================================================================
-  🛑 [${account.id}] PERINGATAN PEMBATASAN SEMENTARA DARI FACEBOOK!
-  ⚠️ Pesan: "Anda Tidak Dapat Menggunakan Fitur Ini Sekarang / Limit Komentar"
-  ℹ️  Facebook membatasi aktivitas komentar untuk sementara waktu pada akun ini.
-  💡 Bot otomatis menghentikan proses akun ini demi menjaga kesehatan akun Anda.
-===================================================================================
-`));
+          logger.error(`🛑 [${account.id}] Terkena limit pembatasan komentar Facebook.`);
+          if (onProgress) await onProgress('ACTION_BLOCKED', { accountId: account.id });
           break;
         }
 
@@ -490,34 +496,39 @@ export class Commenter {
           commentText,
           processedSet,
           settings.delays.minTypingDelayMs,
-          settings.delays.maxTypingDelayMs
+          settings.delays.maxTypingDelayMs,
+          onProgress
         );
 
         if (result.isBlocked) {
-          console.log(chalk.red.bold(`
-===================================================================================
-  🛑 [${account.id}] PERINGATAN PEMBATASAN SEMENTARA DARI FACEBOOK!
-  ⚠️ Pesan: "Anda Tidak Dapat Menggunakan Fitur Ini Sekarang / Limit Komentar"
-  ℹ️  Facebook membatasi aktivitas komentar untuk sementara waktu pada akun ini.
-  💡 Bot otomatis menghentikan proses akun ini demi menjaga kesehatan akun Anda.
-===================================================================================
-`));
+          logger.error(`🛑 [${account.id}] Terkena limit pembatasan komentar Facebook.`);
+          if (onProgress) await onProgress('ACTION_BLOCKED', { accountId: account.id });
           break;
         }
 
         if (result.success) {
           commentedCount++;
           const progressText = isUnlimited ? `[${commentedCount} terkirim]` : `[${commentedCount}/${countToComment}]`;
-          logger.success(`🎉 [${account.id}] ${progressText} [VALIDASI SUKSES] Komentar terverifikasi berhasil terkirim di feed: "${commentText}"`);
+          logger.success(`🎉 [${account.id}] ${progressText} [VALIDASI SUKSES] Komentar terkirim di feed: "${commentText}"`);
           results.push({ success: true, comment: commentText });
+          if (onProgress) await onProgress('COMMENT_SUCCESS', { accountId: account.id, progressText, commentText });
 
           if (isUnlimited || commentedCount < countToComment) {
             const defaultPause = Math.floor(Math.random() * 8000) + 8000;
-            const pauseTime = options.delaySeconds ? (options.delaySeconds * 1000) : defaultPause;
-            logger.info(`Jeda aman ${Math.round(pauseTime / 1000)} detik sebelum berpindah ke postingan berikutnya...`);
-            await sleep(pauseTime);
+            const pauseMs = options.delaySeconds ? (options.delaySeconds * 1000) : defaultPause;
+            logger.info(`Jeda aman ${Math.round(pauseMs / 1000)} detik sebelum postingan berikutnya...`);
+            if (onProgress) await onProgress('DELAY', { seconds: Math.round(pauseMs / 1000) });
 
-            logger.account(account.id, 'Berpindah dan scroll ke postingan baru di bawah...');
+            // Responsif terhadap stop signal setiap 500ms
+            const step = 500;
+            let waited = 0;
+            while (waited < pauseMs) {
+              if (shouldStop()) break;
+              await sleep(step);
+              waited += step;
+            }
+            if (shouldStop()) break;
+
             await page.evaluate(() => {
               window.scrollBy({ top: Math.floor(window.innerHeight * 1.4), behavior: 'smooth' });
             });
@@ -535,14 +546,14 @@ export class Commenter {
       await close();
       return { success: commentedCount > 0, totalCommented: commentedCount, results };
     } catch (err) {
-      logger.error(`[${account.id}] Terjadi kesalahan saat komentar postingan acak feed:`, err);
+      logger.error(`[${account.id}] Error saat komentar feed:`, err);
       await close().catch(() => {});
       return { success: false, error: err.message };
     }
   }
 
   /**
-   * Menjalankan aksi komentar pada FACEBOOK REELS dengan deteksi pembatasan otomatis
+   * Menjalankan aksi komentar pada FACEBOOK REELS dengan step-by-step progress & interruptible stop
    */
   static async postRandomReelsComments(account, options = {}) {
     const settings = getSettings();
@@ -550,8 +561,11 @@ export class Commenter {
     const isUnlimited = (countToComment === 0 || countToComment === -1);
     const targetCountText = isUnlimited ? '🔥 Tanpa Batas (Non-Stop Loop)' : `${countToComment} Reels`;
     const template = options.commentTemplate || '{Halo|Hai|Permisi} kak, {keren banget videonya|menarik sekali|suka videonya}! {Salam sukses ya}.';
+    const shouldStop = typeof options.shouldStop === 'function' ? options.shouldStop : () => false;
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
 
     logger.account(account.id, `Membuka Facebook Reels untuk berkomentar (Target: ${targetCountText})...`);
+    if (onProgress) await onProgress('START', { accountId: account.id, target: targetCountText });
 
     let browserInstance;
     try {
@@ -584,6 +598,7 @@ export class Commenter {
       }
 
       logger.account(account.id, 'Berhasil masuk ke Facebook Reels! Mulai memutar dan mengomentari Reels...');
+      if (onProgress) await onProgress('LOGGED_IN', { accountId: account.id });
       await randomDelay(2000, 4000);
 
       let commentedCount = 0;
@@ -591,20 +606,21 @@ export class Commenter {
       const maxReelAttempts = isUnlimited ? 999999 : (countToComment * 20);
 
       while ((isUnlimited || commentedCount < countToComment) && reelIndex < maxReelAttempts) {
+        if (shouldStop()) {
+          logger.info(`[${account.id}] Bot dihentikan oleh pengguna (STOP).`);
+          if (onProgress) await onProgress('STOPPED', { accountId: account.id, totalCommented: commentedCount });
+          break;
+        }
+
         reelIndex++;
         const currentUrl = page.url();
-        logger.account(account.id, `Sedang menonton Reel: ${currentUrl}`);
+        logger.account(account.id, `Sedang menonton Reel #${reelIndex}: ${currentUrl}`);
+        if (onProgress) await onProgress('WATCHING_REEL', { accountId: account.id, url: currentUrl, reelIndex });
 
         // Cek apakah akun terblokir
         if (await Commenter.checkIsActionBlocked(page)) {
-          console.log(chalk.red.bold(`
-===================================================================================
-  🛑 [${account.id}] PERINGATAN PEMBATASAN SEMENTARA DARI FACEBOOK!
-  ⚠️ Pesan: "Anda Tidak Dapat Menggunakan Fitur Ini Sekarang / Limit Komentar"
-  ℹ️  Facebook membatasi aktivitas komentar untuk sementara waktu pada akun ini.
-  💡 Bot otomatis menghentikan proses akun ini demi menjaga kesehatan akun Anda.
-===================================================================================
-`));
+          logger.error(`🛑 [${account.id}] Terkena limit pembatasan komentar Facebook.`);
+          if (onProgress) await onProgress('ACTION_BLOCKED', { accountId: account.id });
           break;
         }
 
@@ -618,6 +634,7 @@ export class Commenter {
           if (commentBox) {
             const commentText = parseSpintax(template);
             logger.info(`Mengetikkan komentar pada Reel: "${commentText}"`);
+            if (onProgress) await onProgress('TYPING', { accountId: account.id, commentText });
 
             await commentBox.scrollIntoViewIfNeeded().catch(() => {});
             await commentBox.click({ force: true });
@@ -626,6 +643,8 @@ export class Commenter {
             await typeHumanLike(page, commentBox, commentText, settings.delays.minTypingDelayMs, settings.delays.maxTypingDelayMs);
             await randomDelay(1200, 2200);
 
+            if (shouldStop()) break;
+
             // Tekan Enter untuk submit
             await page.keyboard.press('Enter');
             await randomDelay(2500, 3500);
@@ -633,14 +652,8 @@ export class Commenter {
             // Cek tombol kirim jika teks masih tertinggal
             let verifyResult = await Commenter.verifyCommentSubmitted(page, commentBox, commentText);
             if (verifyResult.isBlocked) {
-              console.log(chalk.red.bold(`
-===================================================================================
-  🛑 [${account.id}] PERINGATAN PEMBATASAN SEMENTARA DARI FACEBOOK!
-  ⚠️ Pesan: "Anda Tidak Dapat Menggunakan Fitur Ini Sekarang / Limit Komentar"
-  ℹ️  Facebook membatasi aktivitas komentar untuk sementara waktu pada akun ini.
-  💡 Bot otomatis menghentikan proses akun ini demi menjaga kesehatan akun Anda.
-===================================================================================
-`));
+              logger.error(`🛑 [${account.id}] Terkena limit pembatasan komentar Facebook.`);
+              if (onProgress) await onProgress('ACTION_BLOCKED', { accountId: account.id });
               break;
             }
 
@@ -652,14 +665,8 @@ export class Commenter {
               }
               verifyResult = await Commenter.verifyCommentSubmitted(page, commentBox, commentText);
               if (verifyResult.isBlocked) {
-                console.log(chalk.red.bold(`
-===================================================================================
-  🛑 [${account.id}] PERINGATAN PEMBATASAN SEMENTARA DARI FACEBOOK!
-  ⚠️ Pesan: "Anda Tidak Dapat Menggunakan Fitur Ini Sekarang / Limit Komentar"
-  ℹ️  Facebook membatasi aktivitas komentar untuk sementara waktu pada akun ini.
-  💡 Bot otomatis menghentikan proses akun ini demi menjaga kesehatan akun Anda.
-===================================================================================
-`));
+                logger.error(`🛑 [${account.id}] Terkena limit pembatasan komentar Facebook.`);
+                if (onProgress) await onProgress('ACTION_BLOCKED', { accountId: account.id });
                 break;
               }
             }
@@ -667,14 +674,25 @@ export class Commenter {
             if (verifyResult.isConfirmed) {
               commentedCount++;
               const progressText = isUnlimited ? `[${commentedCount} terkirim]` : `[${commentedCount}/${countToComment}]`;
-              logger.success(`🎉 [${account.id}] ${progressText} [VALIDASI SUKSES] Komentar terverifikasi di Reel: "${commentText}"`);
+              logger.success(`🎉 [${account.id}] ${progressText} [VALIDASI SUKSES] Komentar di Reel: "${commentText}"`);
               results.push({ success: true, url: currentUrl, comment: commentText });
+              if (onProgress) await onProgress('COMMENT_SUCCESS', { accountId: account.id, progressText, commentText, url: currentUrl });
 
               if (isUnlimited || commentedCount < countToComment) {
                 const defaultPause = Math.floor(Math.random() * 8000) + 8000;
-                const pauseTime = options.delaySeconds ? (options.delaySeconds * 1000) : defaultPause;
-                logger.info(`Jeda aman ${Math.round(pauseTime / 1000)} detik sebelum berpindah ke Reel berikutnya...`);
-                await sleep(pauseTime);
+                const pauseMs = options.delaySeconds ? (options.delaySeconds * 1000) : defaultPause;
+                logger.info(`Jeda aman ${Math.round(pauseMs / 1000)} detik sebelum berpindah ke Reel berikutnya...`);
+                if (onProgress) await onProgress('DELAY', { seconds: Math.round(pauseMs / 1000) });
+
+                // Responsif terhadap stop signal setiap 500ms
+                const step = 500;
+                let waited = 0;
+                while (waited < pauseMs) {
+                  if (shouldStop()) break;
+                  await sleep(step);
+                  waited += step;
+                }
+                if (shouldStop()) break;
               }
             } else {
               logger.warn(`Komentar pada Reel ini belum terkonfirmasi terkirim.`);
@@ -684,8 +702,11 @@ export class Commenter {
           }
         }
 
+        if (shouldStop()) break;
+
         // 3. PINDAH KE REEL BERIKUTNYA
         logger.account(account.id, 'Berpindah ke video Reel berikutnya (Next Reel)...');
+        if (onProgress) await onProgress('NEXT_REEL', { accountId: account.id });
         await Commenter.goToNextReel(page);
       }
 
@@ -706,12 +727,14 @@ export class Commenter {
     const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
     const concurrency = options.concurrency || 1;
 
-    logger.info(`🎬 Memulai kampanye komentar Facebook REELS (${activeAccounts.length} akun, Concurrency: ${concurrency} browser bersamaan)...`);
+    logger.info(`🎬 Memulai kampanye komentar Facebook REELS (${activeAccounts.length} akun, Concurrency: ${concurrency})...`);
     const allResults = [];
     let currentIndex = 0;
 
     const worker = async (workerId) => {
       while (currentIndex < activeAccounts.length) {
+        if (options.shouldStop && options.shouldStop()) break;
+
         const accIdx = currentIndex++;
         const account = activeAccounts[accIdx];
         logger.info(`[Worker ${workerId}] Memproses Reels untuk Akun: ${account.name || account.id}`);
@@ -720,12 +743,14 @@ export class Commenter {
           count: options.count,
           commentTemplate: options.commentTemplate,
           delaySeconds: options.delaySeconds,
-          headless: options.headless
+          headless: options.headless,
+          shouldStop: options.shouldStop,
+          onProgress: options.onProgress
         });
 
         allResults[accIdx] = { accountId: account.id, ...res };
 
-        if (concurrency === 1 && accIdx < activeAccounts.length - 1) {
+        if (concurrency === 1 && accIdx < activeAccounts.length - 1 && (!options.shouldStop || !options.shouldStop())) {
           const delayTime = Math.floor(
             Math.random() * (settings.delays.maxBetweenAccountsDelayMs - settings.delays.minBetweenAccountsDelayMs + 1)
           ) + settings.delays.minBetweenAccountsDelayMs;
@@ -738,7 +763,7 @@ export class Commenter {
     const workerPromises = Array.from({ length: Math.min(concurrency, activeAccounts.length) }, (_, i) => worker(i + 1));
     await Promise.all(workerPromises);
 
-    logger.success('\n🎉 Kampanye komentar Facebook Reels selesai dijalankan!');
+    logger.success('\n🎉 Kampanye komentar Facebook Reels selesai!');
     return allResults;
   }
 
@@ -750,12 +775,14 @@ export class Commenter {
     const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
     const concurrency = options.concurrency || 1;
 
-    logger.info(`🚀 Memulai kampanye komentar acak Beranda (${activeAccounts.length} akun, Concurrency: ${concurrency} browser bersamaan)...`);
+    logger.info(`🚀 Memulai kampanye komentar Beranda (${activeAccounts.length} akun, Concurrency: ${concurrency})...`);
     const allResults = [];
     let currentIndex = 0;
 
     const worker = async (workerId) => {
       while (currentIndex < activeAccounts.length) {
+        if (options.shouldStop && options.shouldStop()) break;
+
         const accIdx = currentIndex++;
         const account = activeAccounts[accIdx];
         logger.info(`[Worker ${workerId}] Memproses Akun: ${account.name || account.id}`);
@@ -764,12 +791,14 @@ export class Commenter {
           count: options.count,
           commentTemplate: options.commentTemplate,
           delaySeconds: options.delaySeconds,
-          headless: options.headless
+          headless: options.headless,
+          shouldStop: options.shouldStop,
+          onProgress: options.onProgress
         });
 
         allResults[accIdx] = { accountId: account.id, ...res };
 
-        if (concurrency === 1 && accIdx < activeAccounts.length - 1) {
+        if (concurrency === 1 && accIdx < activeAccounts.length - 1 && (!options.shouldStop || !options.shouldStop())) {
           const delayTime = Math.floor(
             Math.random() * (settings.delays.maxBetweenAccountsDelayMs - settings.delays.minBetweenAccountsDelayMs + 1)
           ) + settings.delays.minBetweenAccountsDelayMs;
@@ -782,7 +811,7 @@ export class Commenter {
     const workerPromises = Array.from({ length: Math.min(concurrency, activeAccounts.length) }, (_, i) => worker(i + 1));
     await Promise.all(workerPromises);
 
-    logger.success('\n🎉 Kampanye komentar acak di Beranda selesai dijalankan!');
+    logger.success('\n🎉 Kampanye komentar Beranda selesai!');
     return allResults;
   }
 
@@ -815,7 +844,8 @@ export class Commenter {
         commentText,
         processedSet,
         settings.delays.minTypingDelayMs,
-        settings.delays.maxTypingDelayMs
+        settings.delays.maxTypingDelayMs,
+        options.onProgress
       );
 
       if (result.isBlocked) {
