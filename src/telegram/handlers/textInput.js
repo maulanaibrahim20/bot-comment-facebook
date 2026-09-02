@@ -2,6 +2,7 @@ import { bulkImportAccounts } from "../../config.js";
 import { loadTelegramConfig, saveTelegramConfig } from "../config.js";
 import { userStates, manualOtpStore, campaignState } from "../state.js";
 import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
+import { executeTargetCampaign } from "../services/targetService.js";
 
 export function registerTextInputHandler(bot) {
   // Handler Teks Masuk Umum (untuk menangani update komentar custom, delay manual, dan OTP login)
@@ -71,6 +72,48 @@ export function registerTextInputHandler(bot) {
       return ctx.replyWithMarkdown(
         `✅ *Jeda waktu antar video berhasil diatur ke ${sec} detik!*\n\n` +
           `Silakan pilih menu di bawah untuk mulai:`,
+        getMainKeyboard()
+      );
+    }
+
+    if (state === "AWAITING_TARGET_URL") {
+      userStates.delete(ctx.from.id);
+      const url = ctx.message.text.trim();
+      if (!url.startsWith("http")) {
+        return ctx.reply(
+          "⚠️ URL tidak valid. Pastikan diawali dengan http:// atau https://",
+          getMainKeyboard()
+        );
+      }
+      return executeTargetCampaign(ctx, url);
+    }
+
+    if (state === "AWAITING_COMMENT_FILTER") {
+      userStates.delete(ctx.from.id);
+      const raw = ctx.message.text.trim();
+      const parts = raw.split(/[\s-]+/);
+      let min = 0;
+      let max = 0;
+
+      if (parts.length === 1) {
+        max = parseInt(parts[0], 10) || 0;
+      } else if (parts.length >= 2) {
+        min = parseInt(parts[0], 10) || 0;
+        max = parseInt(parts[1], 10) || 0;
+      }
+
+      let config = loadTelegramConfig();
+      if (!config.defaultSettings) config.defaultSettings = {};
+      config.defaultSettings.minComments = min;
+      config.defaultSettings.maxComments = max;
+      saveTelegramConfig(config);
+
+      const desc = min > 0 && max > 0 
+        ? `${min} - ${max} komentar` 
+        : (max > 0 ? `Maksimal ${max} komentar` : (min > 0 ? `Minimal ${min} komentar` : "Bebas (Semua)"));
+
+      return ctx.replyWithMarkdown(
+        `✅ *Filter jumlah komentar berhasil diatur ke:* *${desc}*`,
         getMainKeyboard()
       );
     }

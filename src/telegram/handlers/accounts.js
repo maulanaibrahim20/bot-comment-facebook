@@ -1,6 +1,15 @@
 import { Markup } from "telegraf";
-import { getAccounts, hasAccountSession, bulkImportAccounts, deleteAccount } from "../../config.js";
+import { 
+  getAccounts, 
+  hasAccountSession, 
+  bulkImportAccounts, 
+  deleteAccount, 
+  getLimitedAccounts, 
+  clearAccountLimit 
+} from "../../config.js";
 import { SessionManager } from "../../core/sessionManager.js";
+import { ProfileSwitcher } from "../../core/profileSwitcher.js";
+import { createAccountBrowserContext } from "../../browser.js";
 import { userStates, campaignState } from "../state.js";
 import { getRunningKeyboard } from "../keyboards.js";
 import { executeLoginAccounts } from "../services/loginService.js";
@@ -29,7 +38,10 @@ export function registerAccountHandlers(bot) {
     accounts.forEach((acc, i) => {
       const hasSession = hasAccountSession(acc.id);
       const sessionEmoji = hasSession ? "✅ Login Tersimpan" : "❌ Belum Login";
-      text += `${i + 1}. *[${acc.id}]* ${acc.username}\n   └ Status: ${sessionEmoji} | 2FA: ${acc.twoFactorSecret ? "Ada" : "-"}\n\n`;
+      const limitNote = acc.isLimited
+        ? `\n   └ 🛑 *STATUS: TERKENA LIMIT KOMENTAR*\n      • Alasan: _${acc.limitReason || 'Limit Facebook'}_\n      • Waktu: _${acc.limitedAt ? new Date(acc.limitedAt).toLocaleString('id-ID') : '-'}_`
+        : "";
+      text += `${i + 1}. *[${acc.id}]* ${acc.username}\n   └ Status: ${sessionEmoji} | 2FA: ${acc.twoFactorSecret ? "Ada" : "-"}${limitNote}\n\n`;
     });
 
     await ctx.replyWithMarkdown(
@@ -40,6 +52,11 @@ export function registerAccountHandlers(bot) {
           Markup.button.callback("🔑 Login Akun", "TRIGGER_LOGIN_MENU")
         ],
         [
+          Markup.button.callback("⚠️ Akun Limit", "TRIGGER_VIEW_LIMITED"),
+          Markup.button.callback("🔄 Reset Limit", "TRIGGER_RESET_LIMIT")
+        ],
+        [
+          Markup.button.callback("🚩 Cek Halaman (Fanspage)", "TRIGGER_CHECK_PAGES"),
           Markup.button.callback("🗑️ Hapus Akun", "TRIGGER_DELETE_MENU")
         ]
       ])
@@ -142,10 +159,61 @@ export function registerAccountHandlers(bot) {
     );
     for (const acc of accounts) {
       const res = await SessionManager.verifySession(acc);
-      const statusText = res.isValid
-        ? "✅ Sesi AKTIF & Valid"
-        : "❌ Sesi KADALUARSA / Checkpoint";
-      await ctx.reply(`Account [${acc.id}] (${acc.username}):\n${statusText}`);
+      let statusText = "";
+      if (res.isValid) {
+        if (res.isRestricted) {
+          statusText = `⚠️ *Sesi AKTIF tetapi TERKENA PEMBATASAN!*\n_Pesan: ${res.restrictionReason || "Akun terkena limit / pembatasan dari Facebook"}_`;
+        } else {
+          statusText = `✅ *Sesi AKTIF & Siap Berkomentar*`;
+        }
+      } else {
+        statusText = `❌ *Sesi KADALUARSA / Checkpoint*`;
+      }
+      await ctx.replyWithMarkdown(`Account *[${acc.id}]* (${acc.username}):\n${statusText}`);
+    }
+  });
+
+  // Menu Pemeriksaan Halaman Facebook (Fanspage)
+  bot.action("TRIGGER_CHECK_PAGES", async (ctx) => {
+    await ctx.answerCbQuery();
+    if (campaignState.isRunning) {
+      return ctx.reply("⚠️ Bot sedang berjalan! Cek halaman hanya dapat dilakukan saat bot standby.", getRunningKeyboard());
+    }
+
+    const accounts = getAccounts();
+    if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
+
+    await ctx.reply("🔍 Memeriksa daftar Halaman Facebook (Fanspage) untuk semua akun terdaftar (mohon tunggu)...");
+
+    for (const acc of accounts) {
+      if (!hasAccountSession(acc.id)) {
+        await ctx.reply(`Account [${acc.id}] (${acc.username}):\n❌ Belum login. Silakan login terlebih dahulu.`);
+        continue;
+      }
+
+      let browserInstance = null;
+      try {
+        browserInstance = await createAccountBrowserContext(acc, { headless: true });
+        const pages = await ProfileSwitcher.getAccountPages(browserInstance.page);
+        await browserInstance.close();
+
+        if (pages.length > 0) {
+          const listText = pages.map((p, idx) => `   ${idx + 1}. 🚩 *${p.name}*`).join("\n");
+          await ctx.replyWithMarkdown(
+            `Account *[${acc.id}]* (${acc.username}):\n` +
+              `Ditemukan *${pages.length} Halaman Facebook:*\n${listText}\n\n` +
+              `_Anda dapat menggunakan Halaman ini untuk berkomentar melalui menu '🎭 Identitas (Akun / Halaman)'._`
+          );
+        } else {
+          await ctx.replyWithMarkdown(
+            `Account *[${acc.id}]* (${acc.username}):\n` +
+              `ℹ️ Tidak ditemukan Halaman Facebook pada akun ini (Hanya memiliki Profil Pribadi).`
+          );
+        }
+      } catch (e) {
+        if (browserInstance?.close) await browserInstance.close().catch(() => {});
+        await ctx.reply(`Account [${acc.id}] (${acc.username}):\n⚠️ Gagal memeriksa Halaman: ${e.message}`);
+      }
     }
   });
 
@@ -290,5 +358,125 @@ export function registerAccountHandlers(bot) {
         ]
       ])
     );
+  });
+
+  // Handler: Lihat Daftar Akun yang Terkena Limit
+  const showLimitedAccountsTelegram = async (ctx) => {
+    const limited = getLimitedAccounts();
+    if (limited.length === 0) {
+      return ctx.replyWithMarkdown("🎉 *Semua Akun Normal!*\n\nTidak ada akun yang tercatat terkena limit komentar Facebook saat ini.");
+    }
+
+    let msg = `🛑 *Daftar Akun Terkena Limit Komentar (${limited.length}):*\n\n`;
+    limited.forEach((acc, i) => {
+      const dateStr = acc.limitedAt ? new Date(acc.limitedAt).toLocaleString("id-ID") : "-";
+      msg += `${i + 1}. *[${acc.id}]* \`${acc.username}\`\n` +
+             `   • Alasan: _${acc.limitReason || "Limit komentar Facebook"}_\n` +
+             `   • Waktu: _${dateStr}_\n\n`;
+    });
+
+    msg += `_Gunakan tombol di bawah jika masa limit sudah lewat untuk mereset statusnya ke normal._`;
+
+    await ctx.replyWithMarkdown(
+      msg,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("🔄 Reset Limit Akun", "TRIGGER_RESET_LIMIT")],
+        [Markup.button.callback("🔙 Tutup", "CANCEL_ACCOUNT_ACTION")]
+      ])
+    );
+  };
+
+  bot.action("TRIGGER_VIEW_LIMITED", async (ctx) => {
+    await ctx.answerCbQuery();
+    await showLimitedAccountsTelegram(ctx);
+  });
+
+  bot.command("limited", async (ctx) => {
+    await showLimitedAccountsTelegram(ctx);
+  });
+
+  // Handler: Menu Reset Limit Akun
+  const showResetLimitMenu = async (ctx) => {
+    const limited = getLimitedAccounts();
+    if (limited.length === 0) {
+      return ctx.replyWithMarkdown("🎉 *Tidak ada akun yang terkena limit untuk direset.*");
+    }
+
+    const buttons = limited.map((acc) => [
+      Markup.button.callback(`🔄 Reset [${acc.id}] (${acc.username})`, `EXEC_RESET_LIMIT_${acc.id}`)
+    ]);
+
+    buttons.push([Markup.button.callback("✨ Reset SEMUA Akun ke Normal", "EXEC_RESET_LIMIT_ALL")]);
+    buttons.push([Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")]);
+
+    await ctx.replyWithMarkdown(
+      `🔄 *Reset Status Limit Komentar*\n\n` +
+      `Pilih akun yang ingin dikembalikan statusnya ke Normal:`,
+      Markup.inlineKeyboard(buttons)
+    );
+  };
+
+  bot.action("TRIGGER_RESET_LIMIT", async (ctx) => {
+    await ctx.answerCbQuery();
+    await showResetLimitMenu(ctx);
+  });
+
+  bot.command("resetlimit", async (ctx) => {
+    await showResetLimitMenu(ctx);
+  });
+
+  bot.action(/^EXEC_RESET_LIMIT_(.+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = ctx.match[1];
+
+    if (targetId === "ALL") {
+      const limited = getLimitedAccounts();
+      for (const acc of limited) {
+        clearAccountLimit(acc.id);
+      }
+      return ctx.replyWithMarkdown(`✅ *Sukses!* Status limit untuk *${limited.length} akun* telah direset ke Normal.`);
+    } else {
+      clearAccountLimit(targetId);
+      return ctx.replyWithMarkdown(`✅ *Sukses!* Akun *[${targetId}]* telah direset dan siap digunakan kembali.`);
+    }
+  });
+
+  // Command /openbrowser <acc_id> atau /inspect <acc_id>
+  bot.command(["openbrowser", "inspect", "screenshot"], async (ctx) => {
+    if (campaignState.isRunning) return ctx.reply("⚠️ Bot sedang menjalankan kampanye.");
+    const parts = ctx.message.text.split(" ");
+    const targetId = parts[1]?.trim();
+
+    const accounts = getAccounts();
+    if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
+
+    const target = targetId ? accounts.find(a => a.id === targetId || a.username === targetId) : accounts[0];
+    if (!target) {
+      return ctx.reply(`⚠️ Akun "${targetId}" tidak ditemukan. Contoh: /openbrowser ${accounts[0].id}`);
+    }
+
+    await ctx.reply(`🌐 Membuka browser akun [${target.id}] (${target.username}) dan mengambil tangkapan layar...`);
+
+    let browserInstance = null;
+    try {
+      browserInstance = await createAccountBrowserContext(target, { headless: false });
+      const { page, context, close } = browserInstance;
+
+      await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: 45000 });
+      await sleep(3000);
+
+      const shotBuffer = await page.screenshot({ fullPage: false });
+      await ctx.replyWithPhoto({ source: shotBuffer }, {
+        caption: `🌐 *Tampilan Facebook Akun:* [${target.id}] (${target.username})\nURL: \`${page.url()}\``
+      });
+
+      // Beri jeda 30 detik agar user bisa melihat jika di depan PC
+      setTimeout(async () => {
+        await close().catch(() => {});
+      }, 30000);
+    } catch (err) {
+      if (browserInstance?.close) await browserInstance.close().catch(() => {});
+      await ctx.reply(`❌ Gagal membuka browser akun: ${err.message}`);
+    }
   });
 }

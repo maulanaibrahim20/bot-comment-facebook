@@ -47,21 +47,31 @@ export function registerHelpHandlers(bot) {
 
     const helpText =
       `📖 *Panduan Penggunaan Bot Telegram:*\n\n` +
-      `*Menu Tombol:*\n` +
-      `• *🎬 Komentar Reels*: Menjalankan komentar di Facebook Reels step-by-step.\n` +
-      `• *🎲 Komentar Beranda*: Menjalankan komentar di Beranda Facebook.\n` +
-      `• *✏️ Atur Komentar / Link*: Ubah teks atau link yang akan dikomentari.\n` +
-      `• *⏱️ Atur Jeda (Delay)*: Atur jeda istirahat antar video (detik).\n` +
-      `• *👥 Daftar Akun*: Melihat status login, tambah akun, atau hapus akun.\n` +
-      `• *🩺 Cek Status Sesi*: Memeriksa apakah akun masih aktif di Facebook.\n` +
-      `• *🛑 Stop*: Menghentikan bot seketika (responsif dalam 1 detik).\n\n` +
-      `*Perintah Cepat:*\n` +
-      `• \`/reels 10\` - Komentar di 10 Reels\n` +
-      `• \`/reels 10 https://linkanda.com\` - Komentar di 10 Reels dengan link baru\n` +
-      `• \`/feed 10\` - Komentar di 10 Postingan Beranda\n` +
-      `• \`/setcomment <link/teks>\` - Atur komentar default\n` +
-      `• \`/setdelay <detik>\` - Atur jeda waktu antar komentar\n` +
-      `• \`/deleteaccount <id>\` - Hapus akun (opsi simpan/hapus sesi)\n` +
+      `*Menu Tombol Utama:*\n` +
+      `• *🎬 Komentar Reels*: Komentar di Facebook Reels.\n` +
+      `• *🎲 Komentar Beranda*: Komentar di Beranda / Feed Facebook.\n` +
+      `• *🎯 Komentar Target URL*: Komentar ke link postingan target tertentu.\n` +
+      `• *👥 Daftar Akun*: Manajemen akun, status limit, cek Fanspage, dan hapus akun.\n` +
+      `• *✏️ Atur Komentar / Link*: Ubah teks spintax atau tautan default.\n` +
+      `• *⏱️ Atur Jeda & Browser*: Atur delay dan mode tampilan jendela browser.\n` +
+      `• *🎭 Identitas*: Berkomentar sebagai Profil Pribadi atau Halaman Facebook.\n` +
+      `• *🧪 Preview Spintax*: Melihat 5 contoh variasi komentar dari template spintax aktif.\n` +
+      `• *🩺 Cek Status Sesi*: Health check akun & verifikasi login Facebook.\n` +
+      `• *🛑 Stop Kampanye*: Menghentikan bot secara aman.\n\n` +
+      `*Perintah Cepat (Slash Commands):*\n` +
+      `• \`/reels [jumlah]\` - Komentar Reels\n` +
+      `• \`/feed [jumlah]\` - Komentar Beranda\n` +
+      `• \`/target <url>\` - Komentar ke URL target langsung\n` +
+      `• \`/spintax\` - Lihat 5 contoh variasi spintax\n` +
+      `• \`/limited\` - Lihat daftar akun terkena limit\n` +
+      `• \`/resetlimit\` - Reset status akun limit ke normal\n` +
+      `• \`/resethistory\` - Reset riwayat konten yang sudah dikomentari\n` +
+      `• \`/openbrowser <id>\` - Buka browser akun & kirim screenshot ke chat\n` +
+      `• \`/filter <maks> [min]\` - Filter jumlah komentar target (misal: /filter 100 atau /filter 50 60)\n` +
+      `• \`/setcomment <teks>\` - Atur komentar default\n` +
+      `• \`/setdelay <detik>\` - Atur jeda waktu default\n` +
+      `• \`/setidentity <personal|page>\` - Atur identitas komentar\n` +
+      `• \`/deleteaccount <id>\` - Hapus akun\n` +
       `• \`/stop\` - Hentikan bot`;
 
     await ctx.replyWithMarkdown(helpText);

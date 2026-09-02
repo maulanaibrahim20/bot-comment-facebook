@@ -4,9 +4,10 @@ import { Markup } from "telegraf";
 export function getMainKeyboard() {
   return Markup.keyboard([
     ["🎲 Komentar Beranda", "🎬 Komentar Reels"],
-    ["✏️ Atur Komentar / Link", "⏱️ Atur Jeda (Delay)"],
-    ["👥 Daftar Akun Facebook", "🩺 Cek Status Sesi"],
-    ["ℹ️ Bantuan"]
+    ["🎯 Komentar Target URL", "👥 Daftar Akun Facebook"],
+    ["✏️ Atur Komentar / Link", "⏱️ Atur Jeda & Browser"],
+    ["🎭 Identitas (Akun / Halaman)", "🧪 Preview Spintax"],
+    ["🩺 Cek Status Sesi", "ℹ️ Bantuan"]
   ]).resize();
 }
 

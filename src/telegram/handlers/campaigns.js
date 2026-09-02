@@ -1,11 +1,60 @@
 import { Markup } from "telegraf";
+import { getTargets } from "../../config.js";
 import { loadTelegramConfig } from "../config.js";
 import { campaignState, setCampaignRunning, userStates } from "../state.js";
 import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
 import { executeReelsCampaign } from "../services/reelsService.js";
 import { executeFeedCampaign } from "../services/feedService.js";
+import { executeTargetCampaign } from "../services/targetService.js";
 
 export function registerCampaignHandlers(bot) {
+  // Menjalankan Komentar Target URL Spesifik
+  bot.hears("🎯 Komentar Target URL", async (ctx) => {
+    userStates.delete(ctx.from.id);
+    if (campaignState.isRunning) {
+      return ctx.reply(
+        "⚠️ Bot sedang menjalankan kampanye. Tekan '🛑 Stop Kampanye' jika ingin membatalkan.",
+        getRunningKeyboard()
+      );
+    }
+
+    const targets = getTargets();
+    await ctx.replyWithMarkdown(
+      `🎯 *Komentar ke URL Target Spesifik*\n\n` +
+      `Pilih metode yang ingin digunakan:\n\n` +
+      `1. *Kirim 1 Link Postingan Baru*: Masukkan link postingan Facebook yang ingin dikomentari.\n` +
+      `2. *Gunakan Daftar Target Tersimpan*: Jalankan dari \`config/targets.json\` (${targets.length} target).`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("✍️ Kirim Link Postingan Baru", "TARGET_INPUT_LINK")],
+        [Markup.button.callback(`📁 Gunakan Daftar Target (${targets.length})`, "TARGET_RUN_SAVED")],
+        [Markup.button.callback("🔙 Batalkan", "CANCEL_CAMPAIGN")]
+      ])
+    );
+  });
+
+  bot.action("TARGET_INPUT_LINK", async (ctx) => {
+    await ctx.answerCbQuery();
+    userStates.set(ctx.from.id, "AWAITING_TARGET_URL");
+    await ctx.reply(
+      "Silakan kirimkan link URL postingan Facebook target sekarang (contoh: https://www.facebook.com/...):"
+    );
+  });
+
+  bot.action("TARGET_RUN_SAVED", async (ctx) => {
+    await ctx.answerCbQuery();
+    await executeTargetCampaign(ctx);
+  });
+
+  bot.command("target", async (ctx) => {
+    if (campaignState.isRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
+    const url = ctx.message.text.replace("/target", "").trim();
+    if (!url || !url.startsWith("http")) {
+      userStates.set(ctx.from.id, "AWAITING_TARGET_URL");
+      return ctx.reply("Silakan kirimkan link URL postingan Facebook target (awali http/https):");
+    }
+    await executeTargetCampaign(ctx, url);
+  });
+
   // Menjalankan Komentar Beranda
   bot.hears("🎲 Komentar Beranda", async (ctx) => {
     userStates.delete(ctx.from.id);

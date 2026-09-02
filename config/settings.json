@@ -21,5 +21,12 @@
     "maxCommentsPerAccountPerDay": 10,
     "stopOnError": false,
     "screenshotOnError": true
+  },
+  "defaults": {
+    "commentTemplate": "https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R",
+    "delaySeconds": 10,
+    "commentAs": "PAGE",
+    "targetPageName": "",
+    "headless": false
   }
 }

@@ -19,6 +19,11 @@ export async function executeReelsCampaign(ctx, count, overrideComment = null) {
     config.defaultSettings?.customComment ||
     "https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R";
   const delaySec = config.defaultSettings?.defaultDelaySeconds || 15;
+  const commentAs = config.defaultSettings?.commentAs || "PERSONAL";
+  const targetPageName = config.defaultSettings?.targetPageName || "";
+  const minComments = config.defaultSettings?.minComments || 0;
+  const maxComments = config.defaultSettings?.maxComments || 0;
+  const isHeadless = config.defaultSettings?.headless !== false;
 
   setCampaignRunning(true);
   setCampaignInfo({
@@ -28,11 +33,22 @@ export async function executeReelsCampaign(ctx, count, overrideComment = null) {
     currentAccount: accounts[0]?.id || ""
   });
 
+  const identityText =
+    commentAs === "PAGE"
+      ? `🚩 *Halaman Facebook (Fanspage)*${targetPageName ? ` (${targetPageName})` : ""}`
+      : "👤 *Profil Pribadi*";
+
+  const filterText = minComments > 0 && maxComments > 0 
+    ? `${minComments} - ${maxComments} komentar` 
+    : (maxComments > 0 ? `Maksimal ${maxComments} komentar` : (minComments > 0 ? `Minimal ${minComments} komentar` : "Bebas"));
+
   // Ubah Keyboard ke RUNNING MODE (Hanya ada tombol STOP & STATUS)
   await ctx.replyWithMarkdown(
     `🎬 *Memulai Kampanye Facebook Reels*\n` +
       `- Target: *${count === 0 ? "🔥 Non-Stop Loop" : count + " Reels"}*\n` +
       `- Komentar: \`${template}\`\n` +
+      `- Identitas: ${identityText}\n` +
+      `- Filter Komentar: *${filterText}*\n` +
       `- Jeda Antar Video: *${delaySec} detik*\n\n` +
       `_Ketik /stop atau klik tombol Stop di bawah kapan saja untuk menghentikan._`,
     getRunningKeyboard()
@@ -51,7 +67,13 @@ export async function executeReelsCampaign(ctx, count, overrideComment = null) {
               await ctx.reply(`🌐 [${data.accountId}] Membuka Facebook Reels (Target: ${data.target})...`);
               break;
             case "LOGGED_IN":
-              await ctx.reply(`🔑 [${data.accountId}] Berhasil masuk ke Facebook Reels!`);
+              await ctx.reply(`🔑 [${data.accountId}] Berhasil masuk ke Facebook!`);
+              break;
+            case "SWITCHED_PROFILE":
+              await ctx.replyWithMarkdown(`🚩 [${data.accountId}] *Berhasil beralih ke Halaman:* \`${data.profileName}\` untuk berkomentar.`);
+              break;
+            case "FALLBACK_PROFILE":
+              await ctx.reply(`ℹ️ [${data.accountId}] Tidak memiliki Halaman atau belum beralih. Melanjutkan dengan Profil Pribadi.`);
               break;
             case "WATCHING_REEL":
               await ctx.reply(`👁️ [${data.accountId}] Menonton Reel #${data.reelIndex}\nURL: ${data.url}`);
@@ -71,9 +93,25 @@ export async function executeReelsCampaign(ctx, count, overrideComment = null) {
             case "NEXT_REEL":
               await ctx.reply(`⏭️ [${data.accountId}] Berpindah ke video Reel berikutnya...`);
               break;
+            case "SKIPPED_ALREADY_COMMENTED":
+              await ctx.reply(`⏩ [${data.accountId}] Reel ini sudah pernah Anda komentari sebelumnya. Melewati ke Reel berikutnya...`);
+              break;
+            case "SKIPPED_COMMENT_COUNT_FILTER":
+              await ctx.reply(`⏩ [${data.accountId}] Reel memiliki ${data.currentCount} komentar (Di luar target: ${data.targetRangeStr}). Melewati ke Reel berikutnya...`);
+              break;
+            case "SKIPPED_NOT_PAGE":
+              await ctx.reply(`⚠️ [${data.accountId}] Reel ini tidak mengizinkan komentar sebagai Halaman (terdeteksi akun pribadi). Melewati ke Reel berikutnya agar tetap aman...`);
+              break;
             case "ACTION_BLOCKED":
               await ctx.replyWithMarkdown(
-                `🛑 *[${data.accountId}] PEMBATASAN SEMENTARA DARI FACEBOOK!*\nPesan: _Anda Tidak Dapat Menggunakan Fitur Ini Sekarang / Limit Komentar_.\nBot otomatis berhenti pada akun ini demi keamanan.`
+                `🛑 *[${data.accountId}] PEMBATASAN KOMENTAR DARI FACEBOOK!*\n` +
+                  `Pesan: _${data.reason || "Anda Tidak Dapat Menggunakan Fitur Ini Sekarang / Limit Komentar"}_\n\n` +
+                  `_Bot otomatis menghentikan komentar pada akun ini demi keamanan akun Anda._`
+              );
+              break;
+            case "COMMENT_FAILED":
+              await ctx.reply(
+                `⚠️ [${data.accountId}] Komentar belum terkonfirmasi terkirim (Gagal ${data.consecutiveFailures}/${data.maxFailures}). Berpindah ke Reel berikutnya...`
               );
               break;
             case "STOPPED":
@@ -87,15 +125,34 @@ export async function executeReelsCampaign(ctx, count, overrideComment = null) {
         count,
         commentTemplate: template,
         delaySeconds: delaySec,
-        headless: true,
+        commentAs,
+        targetPageName,
+        headless: isHeadless,
+        minComments,
+        maxComments,
         shouldStop: () => !campaignState.isRunning,
         onProgress
       });
 
-      if (res.success) {
+      if (res.isBlocked) {
+        await ctx.replyWithMarkdown(
+          `🛑 *[${acc.id}] Terhenti karena Limit Facebook!*\n` +
+            `- Berhasil terkirim: *${res.totalCommented} komentar*\n` +
+            `- Keterangan: _${res.blockedReason || "Pembatasan limit komentar Facebook"}_\n` +
+            `_Akun ini tidak dapat berkomentar lagi untuk sementara waktu._`
+        );
+      } else if (res.success) {
         await ctx.replyWithMarkdown(
           `✅ *[${acc.id}] Selesai!* Total *${res.totalCommented} komentar* berhasil terkirim di Reels.`
         );
+      } else if (res.reason === "NOT_LOGGED_IN") {
+        await ctx.replyWithMarkdown(
+          `⚠️ *[${acc.id}] Dilewati:* Akun belum berhasil login ke Facebook atau sesi kadaluarsa / checkpoint.`
+        );
+      } else if (res.error) {
+        await ctx.reply(`⚠️ [${acc.id}] Gagal: ${res.error}`);
+      } else {
+        await ctx.reply(`⚠️ [${acc.id}] Selesai. Tidak ada komentar yang berhasil terkirim.`);
       }
     }
   } catch (err) {

@@ -52,6 +52,7 @@ export const paths = {
   accountsExampleFile: path.join(configDir, 'accounts.example.json'),
   targetsFile: path.join(configDir, 'targets.json'),
   settingsFile: path.join(configDir, 'settings.json'),
+  historyFile: path.join(configDir, 'comment_history.json'),
   getSessionFilePath: (accountId) => path.join(sessionsDir, `${accountId}.json`),
   getProfileDir: (accountId) => path.join(sessionsDir, 'profiles', accountId)
 };
@@ -178,6 +179,38 @@ export function updateAccount(accountId, updatedData) {
   return null;
 }
 
+/**
+ * Mencatat akun yang terkena limit komentar Facebook beserta alasan dan waktunya
+ */
+export function markAccountLimited(accountId, reason = 'Limit komentar Facebook') {
+  return updateAccount(accountId, {
+    isLimited: true,
+    limitedAt: new Date().toISOString(),
+    limitReason: reason,
+    note: `⚠️ Terkena Limit: ${reason}`
+  });
+}
+
+/**
+ * Menghapus / mereset status limit akun (agar bisa digunakan kembali normal)
+ */
+export function clearAccountLimit(accountId) {
+  return updateAccount(accountId, {
+    isLimited: false,
+    limitedAt: null,
+    limitReason: null,
+    note: null
+  });
+}
+
+/**
+ * Mendapatkan daftar akun yang saat ini berstatus limit
+ */
+export function getLimitedAccounts() {
+  const accounts = getAccounts();
+  return accounts.filter((a) => a.isLimited === true);
+}
+
 export function getTargets() {
   return loadJson(paths.targetsFile, []);
 }
@@ -207,10 +240,92 @@ export function getSettings() {
       maxCommentsPerAccountPerDay: 10,
       stopOnError: false,
       screenshotOnError: true
+    },
+    defaults: {
+      commentTemplate: "https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R",
+      delaySeconds: 15,
+      commentAs: "PERSONAL",
+      targetPageName: "",
+      headless: false,
+      minComments: 0,
+      maxComments: 0
     }
   };
 
   const loaded = loadJson(paths.settingsFile, defaultSettings);
-  return { ...defaultSettings, ...loaded };
+  return { 
+    ...defaultSettings, 
+    ...loaded, 
+    defaults: { ...defaultSettings.defaults, ...(loaded.defaults || {}) } 
+  };
+}
+
+export function saveSettings(settings) {
+  return saveJson(paths.settingsFile, settings);
+}
+
+export function getDefaultCampaignOptions() {
+  const settings = getSettings();
+  return settings.defaults;
+}
+
+export function updateDefaultCampaignOptions(newDefaults) {
+  const settings = getSettings();
+  settings.defaults = { ...(settings.defaults || {}), ...newDefaults };
+  saveSettings(settings);
+  return settings.defaults;
+}
+
+/**
+ * Memuat riwayat postingan / Reels yang sudah pernah dikomentari oleh masing-masing akun
+ */
+export function getCommentHistory() {
+  return loadJson(paths.historyFile, {});
+}
+
+/**
+ * Mengecek apakah akun tertentu sudah pernah mengomentari postingan / Reel ini
+ */
+export function hasAccountCommentedOn(accountId, targetKey) {
+  if (!targetKey) return false;
+  const history = getCommentHistory();
+  const accountHistory = history[accountId];
+  if (!Array.isArray(accountHistory)) return false;
+  return accountHistory.includes(String(targetKey));
+}
+
+/**
+ * Mencatat bahwa akun tertentu telah sukses mengomentari postingan / Reel ini
+ */
+export function markCommentedHistory(accountId, targetKey) {
+  if (!targetKey) return;
+  const history = getCommentHistory();
+  if (!Array.isArray(history[accountId])) {
+    history[accountId] = [];
+  }
+  const keyStr = String(targetKey);
+  if (!history[accountId].includes(keyStr)) {
+    history[accountId].push(keyStr);
+    // Batasi riwayat maksimal 2500 entri per akun agar file tidak membengkak
+    if (history[accountId].length > 2500) {
+      history[accountId].shift();
+    }
+    saveJson(paths.historyFile, history);
+  }
+}
+
+/**
+ * Menghapus / mereset riwayat komentar
+ */
+export function clearCommentHistory(accountId = null) {
+  const history = getCommentHistory();
+  if (accountId) {
+    delete history[accountId];
+  } else {
+    for (const key of Object.keys(history)) {
+      delete history[key];
+    }
+  }
+  saveJson(paths.historyFile, history);
 }
 

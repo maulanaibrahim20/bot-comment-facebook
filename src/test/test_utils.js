@@ -3,6 +3,7 @@ import { generate2FACode } from '../utils/twoFactor.js';
 import { getAccounts, getTargets, getSettings, paths, hasAccountSession, bulkImportAccounts, deleteAccount } from '../config.js';
 import { randomDelay, sleep } from '../utils/delay.js';
 import { logger } from '../utils/logger.js';
+import { Commenter } from '../core/commenter.js';
 
 console.log('======================================================');
 console.log('  🧪 MENJALANKAN UJI COBA OTOMATIS MENYELURUH (TEST)  ');
@@ -78,6 +79,19 @@ const startT = Date.now();
 await sleep(150);
 const elapsed = Date.now() - startT;
 assertTest('Helper Sleep Delay', elapsed >= 140, `${elapsed}ms`);
+
+// 8. Test Modular Façade & Comment Parser
+console.log('\n8. Menguji Modular Façade & Comment Parser:');
+const parse1 = Commenter.parseCommentCountString('1,5 rb komentar');
+const parse2 = Commenter.parseCommentCountString('2.4k');
+const parse3 = Commenter.parseCommentCountString('85 komentar');
+console.log(`- "1,5 rb komentar" -> ${parse1}`);
+console.log(`- "2.4k" -> ${parse2}`);
+console.log(`- "85 komentar" -> ${parse3}`);
+const isFaçadeValid = typeof Commenter.postRandomReelsComments === 'function' &&
+                      typeof Commenter.postRandomFeedComments === 'function' &&
+                      typeof Commenter.postComment === 'function';
+assertTest('Modular Façade & Comment Parser', parse1 === 1500 && parse2 === 2400 && parse3 === 85 && isFaçadeValid);
 
 console.log('\n======================================================');
 if (passedTests === totalTests) {

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import { createAccountBrowserContext } from '../browser.js';
-import { paths, getSettings } from '../config.js';
+import { paths, getSettings, markAccountLimited, clearAccountLimit } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { randomDelay, sleep, typeHumanLike } from '../utils/delay.js';
 import { generate2FACode } from '../utils/twoFactor.js';
@@ -51,6 +51,49 @@ export class SessionManager {
   }
 
   /**
+   * Mendeteksi apakah akun sedang terkena pembatasan / peringatan akun di Facebook
+   */
+  static async checkAccountRestrictions(page) {
+    try {
+      const restrictionSelectors = [
+        'text="Anda Tidak Dapat Menggunakan Fitur Ini Sekarang"',
+        'text="Kami membatasi seberapa sering Anda dapat memposting"',
+        'text="Kami membatasi seberapa sering Anda dapat berkomentar"',
+        'text="Kami membatasi seberapa sering Anda dapat melakukan"',
+        'text="Tindakan Anda Dibatasi"',
+        'text="Akun Anda Dibatasi"',
+        'text="Akun Anda dibatasi"',
+        'text="Peringatan Akun"',
+        'text="Account Warning"',
+        'text="Your account is restricted"',
+        'text="You’re Temporarily Blocked"',
+        'text="You\'re Temporarily Blocked"',
+        'text="You Can\'t Use This Feature Right Now"',
+        'text="Action Blocked"',
+        'div[role="dialog"]:has-text("Dibatasi")',
+        'div[role="dialog"]:has-text("Restricted")',
+        'div[role="dialog"]:has-text("Peringatan")',
+        'div[role="alert"]:has-text("dibatasi")',
+        'div[role="alert"]:has-text("restricted")'
+      ];
+
+      for (const sel of restrictionSelectors) {
+        const el = page.locator(sel).first();
+        if (await el.isVisible().catch(() => false)) {
+          const text = (await el.innerText().catch(() => '')).trim();
+          return {
+            isRestricted: true,
+            message: text.length > 0 && text.length < 150 ? text : 'Terkena Pembatasan / Limit Facebook'
+          };
+        }
+      }
+      return { isRestricted: false };
+    } catch (e) {
+      return { isRestricted: false };
+    }
+  }
+
+  /**
    * Verifikasi apakah sesi akun masih aktif
    */
   static async verifySession(account) {
@@ -64,11 +107,30 @@ export class SessionManager {
       await randomDelay(2500, 4500);
 
       const loggedIn = await SessionManager.checkIsLoggedIn(context, page);
+      let isRestricted = false;
+      let restrictionMessage = '';
+
+      if (loggedIn) {
+        const restrictionCheck = await SessionManager.checkAccountRestrictions(page);
+        if (restrictionCheck.isRestricted) {
+          isRestricted = true;
+          restrictionMessage = restrictionCheck.message;
+        }
+      }
+
       await close();
 
       if (loggedIn) {
+        if (isRestricted) {
+          markAccountLimited(account.id, restrictionMessage);
+          logger.warn(`[${account.id}] Sesi AKTIF tetapi TERKENA PEMBATASAN: ${restrictionMessage}`);
+          return { isValid: true, isRestricted: true, restrictionReason: restrictionMessage };
+        }
+        if (account.isLimited) {
+          clearAccountLimit(account.id);
+        }
         logger.account(account.id, 'Sesi AKTIF dan valid (Terverifikasi Login).');
-        return { isValid: true };
+        return { isValid: true, isRestricted: false };
       } else {
         logger.account(account.id, 'Sesi KADALUARSA / Masih di Checkpoint.');
         return { isValid: false, reason: 'EXPIRED_OR_CHECKPOINT' };

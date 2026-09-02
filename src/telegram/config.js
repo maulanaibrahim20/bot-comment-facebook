@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import { paths } from "../config.js";
+import { paths, getDefaultCampaignOptions, updateDefaultCampaignOptions } from "../config.js";
 
 dotenv.config();
 
@@ -9,23 +9,31 @@ export const telegramConfigFile = path.join(paths.configDir, "telegram.json");
 export const telegramExampleFile = path.join(paths.configDir, "telegram.example.json");
 
 export function loadTelegramConfig() {
+  let loaded = {};
   if (fs.existsSync(telegramConfigFile)) {
     try {
-      return JSON.parse(fs.readFileSync(telegramConfigFile, "utf-8"));
+      loaded = JSON.parse(fs.readFileSync(telegramConfigFile, "utf-8"));
     } catch (e) {}
-  }
-  if (fs.existsSync(telegramExampleFile)) {
+  } else if (fs.existsSync(telegramExampleFile)) {
     try {
-      return JSON.parse(fs.readFileSync(telegramExampleFile, "utf-8"));
+      loaded = JSON.parse(fs.readFileSync(telegramExampleFile, "utf-8"));
     } catch (e) {}
   }
+
+  const systemDefaults = getDefaultCampaignOptions();
+
   return {
-    botToken: "",
-    allowedUsers: [],
+    botToken: loaded.botToken || "",
+    allowedUsers: loaded.allowedUsers || [],
     defaultSettings: {
-      customComment: "https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R",
-      defaultDelaySeconds: 15,
-      concurrency: 1
+      customComment: loaded.defaultSettings?.customComment || systemDefaults.commentTemplate,
+      defaultDelaySeconds: loaded.defaultSettings?.defaultDelaySeconds || systemDefaults.delaySeconds,
+      concurrency: loaded.defaultSettings?.concurrency || 1,
+      commentAs: loaded.defaultSettings?.commentAs || systemDefaults.commentAs,
+      targetPageName: loaded.defaultSettings?.targetPageName || systemDefaults.targetPageName || "",
+      headless: loaded.defaultSettings?.headless !== undefined ? loaded.defaultSettings.headless : systemDefaults.headless,
+      minComments: loaded.defaultSettings?.minComments !== undefined ? loaded.defaultSettings.minComments : (systemDefaults.minComments || 0),
+      maxComments: loaded.defaultSettings?.maxComments !== undefined ? loaded.defaultSettings.maxComments : (systemDefaults.maxComments || 0)
     }
   };
 }
@@ -33,6 +41,17 @@ export function loadTelegramConfig() {
 export function saveTelegramConfig(config) {
   try {
     fs.writeFileSync(telegramConfigFile, JSON.stringify(config, null, 2), "utf-8");
+    if (config.defaultSettings) {
+      updateDefaultCampaignOptions({
+        commentTemplate: config.defaultSettings.customComment,
+        delaySeconds: config.defaultSettings.defaultDelaySeconds,
+        commentAs: config.defaultSettings.commentAs,
+        targetPageName: config.defaultSettings.targetPageName,
+        headless: config.defaultSettings.headless,
+        minComments: config.defaultSettings.minComments,
+        maxComments: config.defaultSettings.maxComments
+      });
+    }
   } catch (e) {}
 }
 
