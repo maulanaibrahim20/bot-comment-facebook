@@ -122,12 +122,12 @@ export class SessionManager {
 
       if (loggedIn) {
         if (isRestricted) {
-          markAccountLimited(account.id, restrictionMessage);
+          await markAccountLimited(account.id, restrictionMessage);
           logger.warn(`[${account.id}] Sesi AKTIF tetapi TERKENA PEMBATASAN: ${restrictionMessage}`);
           return { isValid: true, isRestricted: true, restrictionReason: restrictionMessage };
         }
         if (account.isLimited) {
-          clearAccountLimit(account.id);
+          await clearAccountLimit(account.id);
         }
         logger.account(account.id, 'Sesi AKTIF dan valid (Terverifikasi Login).');
         return { isValid: true, isRestricted: false };

@@ -29,9 +29,9 @@ import { logger } from './utils/logger.js';
 
 export async function showMainMenu() {
   console.clear();
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   const validAccounts = accounts.filter(a => !a.username.includes('email_atau_username'));
-  const targets = getTargets();
+  const targets = await getTargets();
 
   console.log(chalk.cyan.bold(`
 =====================================================
@@ -152,7 +152,7 @@ async function handleAccountManagement() {
       }
     ]);
     if (confirm) {
-      clearCommentHistory();
+      await clearCommentHistory();
       logger.success('🧹 Riwayat komentar berhasil direset! Semua akun dapat berkomentar lagi di postingan sebelumnya.');
     }
   } else if (accAction === 'DELETE') {
@@ -161,7 +161,7 @@ async function handleAccountManagement() {
 }
 
 async function renderAccountTable() {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   if (accounts.length === 0) {
     console.log(chalk.yellow('Belum ada akun terdaftar. Gunakan opsi Tambah / Import Akun.'));
     return;
@@ -201,7 +201,7 @@ async function renderAccountTable() {
  * Menampilkan daftar rincian akun-akun yang saat ini berstatus limit komentar
  */
 async function handleViewLimitedAccounts() {
-  const limitedAccounts = getLimitedAccounts();
+  const limitedAccounts = await getLimitedAccounts();
   console.log(chalk.bold.yellow('\n======================================================'));
   console.log(chalk.bold.yellow('   ⚠️ DAFTAR AKUN TERKENA LIMIT KOMENTAR FACEBOOK     '));
   console.log(chalk.bold.yellow('======================================================'));
@@ -226,7 +226,7 @@ async function handleViewLimitedAccounts() {
  * Mereset status limit akun agar kembali normal
  */
 async function handleResetAccountLimit() {
-  const limitedAccounts = getLimitedAccounts();
+  const limitedAccounts = await getLimitedAccounts();
   if (limitedAccounts.length === 0) {
     console.log(chalk.green('\n🎉 Tidak ada akun yang terkena limit untuk direset.\n'));
     return;
@@ -254,11 +254,11 @@ async function handleResetAccountLimit() {
 
   if (targetToReset === 'ALL') {
     for (const acc of limitedAccounts) {
-      clearAccountLimit(acc.id);
+      await clearAccountLimit(acc.id);
     }
     logger.success(`🎉 Berhasil mereset status limit untuk ${limitedAccounts.length} akun! Semua kembali normal.`);
   } else {
-    clearAccountLimit(targetToReset);
+    await clearAccountLimit(targetToReset);
     logger.success(`🎉 Status limit untuk akun [${targetToReset}] berhasil direset ke Normal.`);
   }
 }
@@ -304,7 +304,7 @@ async function handleAddSingleAccount() {
     enabled: true
   };
 
-  const added = addAccount(newAccount);
+  const added = await addAccount(newAccount);
   logger.success(`Akun [${added.id}] "${added.username}" berhasil ditambahkan ke sistem!`);
 }
 
@@ -334,7 +334,7 @@ Contoh:
     return;
   }
 
-  const imported = bulkImportAccounts(rawText);
+  const imported = await bulkImportAccounts(rawText);
   if (imported.length > 0) {
     logger.success(`Berhasil mengimpor ${imported.length} akun baru!`);
     await renderAccountTable();
@@ -344,7 +344,7 @@ Contoh:
 }
 
 async function handleDeleteAccount() {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   if (accounts.length === 0) {
     logger.warn('Tidak ada akun untuk dihapus.');
     return;
@@ -373,7 +373,7 @@ async function handleDeleteAccount() {
     }
   ]);
 
-  deleteAccount(accountId, deleteSession);
+  await deleteAccount(accountId, deleteSession);
   if (deleteSession) {
     logger.success(`Akun [${accountId}] dan file sesinya berhasil dihapus.`);
   } else {
@@ -385,7 +385,7 @@ async function handleDeleteAccount() {
  * Login & Session Handler (Mendukung Paralel / Bersamaan)
  */
 async function handleLoginAccounts() {
-  let accounts = getAccounts();
+  let accounts = await getAccounts();
   
   const isDefaultDummy = accounts.length === 1 && accounts[0].username.includes('email_atau_username');
   if (isDefaultDummy) {
@@ -395,7 +395,7 @@ async function handleLoginAccounts() {
     ]);
     if (tambahSekarang) {
       await handleAddSingleAccount();
-      accounts = getAccounts();
+      accounts = await getAccounts();
     } else {
       return;
     }
@@ -451,7 +451,7 @@ async function handleLoginAccounts() {
 }
 
 async function handleCheckSessions() {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   if (accounts.length === 0) {
     logger.warn('Belum ada akun di sistem.');
     return;
@@ -476,7 +476,7 @@ async function handleCheckSessions() {
  * Memeriksa daftar Halaman Facebook (Fanspage) yang dimiliki oleh akun
  */
 async function handleCheckPages() {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   if (accounts.length === 0) {
     logger.warn('Belum ada akun di sistem.');
     return;
@@ -528,7 +528,7 @@ async function handleCheckPages() {
  * Membuka jendela browser akun secara manual agar pengguna dapat melihat / memeriksa Facebook langsung
  */
 async function handleOpenBrowser() {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   if (accounts.length === 0) {
     logger.warn('Belum ada akun di sistem.');
     return;
@@ -644,13 +644,13 @@ async function promptCommentCountFilter(defaultOpts = {}) {
  * Kampanye Komentar Acak di Beranda (Feed) - Mendukung Paralel
  */
 async function handleRunRandomFeed() {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   if (accounts.length === 0) {
     logger.warn('Belum ada akun di sistem.');
     return;
   }
 
-  const defaultOpts = getDefaultCampaignOptions();
+  const defaultOpts = await getDefaultCampaignOptions();
 
   // 1. Pilih Identitas Pengirim Komentar (Pertanyaan Pertama)
   const { commentAs } = await inquirer.prompt([
@@ -760,13 +760,13 @@ async function handleRunRandomFeed() {
  * Kampanye Komentar di Facebook REELS (Video Pendek) - Mendukung Paralel
  */
 async function handleRunRandomReels() {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   if (accounts.length === 0) {
     logger.warn('Belum ada akun di sistem.');
     return;
   }
 
-  const defaultOpts = getDefaultCampaignOptions();
+  const defaultOpts = await getDefaultCampaignOptions();
 
   // 1. Pilih Identitas Pengirim Komentar (Pertanyaan Pertama)
   const { commentAs } = await inquirer.prompt([
@@ -876,8 +876,8 @@ async function handleRunRandomReels() {
  * Kampanye Komentar ke URL Target Tertentu - Mendukung Paralel
  */
 async function handleRunTargetCampaign() {
-  const accounts = getAccounts();
-  let targets = getTargets();
+  const accounts = await getAccounts();
+  let targets = await getTargets();
 
   const { mode } = await inquirer.prompt([
     {
@@ -958,7 +958,7 @@ async function handleTestSpintax() {
  * Pengaturan Bot & Default Kampanye (Sinkron dengan Telegram)
  */
 async function handleBotSettings() {
-  const currentDefaults = getDefaultCampaignOptions();
+  const currentDefaults = await getDefaultCampaignOptions();
 
   const filterText = currentDefaults.minComments > 0 && currentDefaults.maxComments > 0 
     ? `${currentDefaults.minComments} - ${currentDefaults.maxComments} komentar` 
@@ -998,7 +998,7 @@ async function handleBotSettings() {
         default: currentDefaults.commentTemplate
       }
     ]);
-    updateDefaultCampaignOptions({ commentTemplate: newTemplate });
+    await updateDefaultCampaignOptions({ commentTemplate: newTemplate });
     logger.success('✅ Template komentar default berhasil diperbarui!');
   } else if (subAction === 'EDIT_DELAY') {
     const { newDelay } = await inquirer.prompt([
@@ -1009,7 +1009,7 @@ async function handleBotSettings() {
         default: currentDefaults.delaySeconds
       }
     ]);
-    updateDefaultCampaignOptions({ delaySeconds: newDelay || 15 });
+    await updateDefaultCampaignOptions({ delaySeconds: newDelay || 15 });
     logger.success('✅ Jeda waktu default berhasil diperbarui!');
   } else if (subAction === 'EDIT_IDENTITY') {
     const { newIdentity } = await inquirer.prompt([
@@ -1024,7 +1024,7 @@ async function handleBotSettings() {
         default: currentDefaults.commentAs
       }
     ]);
-    updateDefaultCampaignOptions({ commentAs: newIdentity });
+    await updateDefaultCampaignOptions({ commentAs: newIdentity });
     logger.success('✅ Identitas pengirim default berhasil diperbarui!');
   } else if (subAction === 'EDIT_BROWSER_VIEW') {
     const { newHeadless } = await inquirer.prompt([
@@ -1039,11 +1039,11 @@ async function handleBotSettings() {
         default: currentDefaults.headless
       }
     ]);
-    updateDefaultCampaignOptions({ headless: newHeadless });
+    await updateDefaultCampaignOptions({ headless: newHeadless });
     logger.success('✅ Tampilan jendela browser default berhasil diperbarui!');
   } else if (subAction === 'EDIT_COMMENT_FILTER') {
     const filter = await promptCommentCountFilter(currentDefaults);
-    updateDefaultCampaignOptions({ minComments: filter.minComments, maxComments: filter.maxComments });
+    await updateDefaultCampaignOptions({ minComments: filter.minComments, maxComments: filter.maxComments });
     logger.success('✅ Filter jumlah komentar default berhasil diperbarui!');
   } else if (subAction === 'RESET_HISTORY') {
     const { confirm } = await inquirer.prompt([
@@ -1055,7 +1055,7 @@ async function handleBotSettings() {
       }
     ]);
     if (confirm) {
-      clearCommentHistory();
+      await clearCommentHistory();
       logger.success('🧹 Riwayat komentar berhasil direset! Semua akun dapat berkomentar lagi di postingan sebelumnya.');
     }
   }

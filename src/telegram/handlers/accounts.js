@@ -24,7 +24,7 @@ export function registerAccountHandlers(bot) {
     }
 
     userStates.delete(ctx.from.id);
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     if (accounts.length === 0) {
       return ctx.replyWithMarkdown(
         "⚠️ Belum ada akun terdaftar di sistem.\n\nKlik tombol di bawah atau ketik `/addaccount email|password` untuk menambah akun.",
@@ -78,7 +78,7 @@ export function registerAccountHandlers(bot) {
 
   bot.action("TRIGGER_LOGIN_MENU", async (ctx) => {
     await ctx.answerCbQuery();
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
 
     const buttons = accounts.map((acc) => {
@@ -119,7 +119,7 @@ export function registerAccountHandlers(bot) {
         "Format: /addaccount email|password|2fa_secret\nContoh: /addaccount user@gmail.com|pass123|JBSWY3DPEHPK3PXP"
       );
     }
-    const imported = bulkImportAccounts(text);
+    const imported = await bulkImportAccounts(text);
     if (imported.length > 0) {
       await ctx.replyWithMarkdown(
         `✅ *Berhasil menambahkan ${imported.length} akun!*\n${imported
@@ -151,7 +151,7 @@ export function registerAccountHandlers(bot) {
     }
 
     userStates.delete(ctx.from.id);
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
 
     await ctx.reply(
@@ -180,7 +180,7 @@ export function registerAccountHandlers(bot) {
       return ctx.reply("⚠️ Bot sedang berjalan! Cek halaman hanya dapat dilakukan saat bot standby.", getRunningKeyboard());
     }
 
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
 
     await ctx.reply("🔍 Memeriksa daftar Halaman Facebook (Fanspage) untuk semua akun terdaftar (mohon tunggu)...");
@@ -224,7 +224,7 @@ export function registerAccountHandlers(bot) {
       return ctx.reply("⚠️ Bot sedang berjalan! Hapus akun hanya dapat dilakukan saat bot standby.", getRunningKeyboard());
     }
 
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
 
     const buttons = accounts.map((acc) => [
@@ -247,7 +247,7 @@ export function registerAccountHandlers(bot) {
       return ctx.reply("⚠️ Bot sedang berjalan!", getRunningKeyboard());
     }
 
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     const target = accounts.find((a) => a.id === accountId);
     if (!target) return ctx.reply("⚠️ Akun tidak ditemukan.");
 
@@ -286,11 +286,11 @@ export function registerAccountHandlers(bot) {
       return ctx.reply("⚠️ Bot sedang berjalan!", getRunningKeyboard());
     }
 
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     const target = accounts.find((a) => a.id === accountId);
     const username = target ? target.username : accountId;
 
-    deleteAccount(accountId, deleteSession);
+    await deleteAccount(accountId, deleteSession);
 
     if (deleteSession) {
       await ctx.replyWithMarkdown(
@@ -317,7 +317,7 @@ export function registerAccountHandlers(bot) {
     const parts = ctx.message.text.split(" ");
     const targetId = parts[1]?.trim();
 
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
 
     if (!targetId) {
@@ -362,7 +362,7 @@ export function registerAccountHandlers(bot) {
 
   // Handler: Lihat Daftar Akun yang Terkena Limit
   const showLimitedAccountsTelegram = async (ctx) => {
-    const limited = getLimitedAccounts();
+    const limited = await getLimitedAccounts();
     if (limited.length === 0) {
       return ctx.replyWithMarkdown("🎉 *Semua Akun Normal!*\n\nTidak ada akun yang tercatat terkena limit komentar Facebook saat ini.");
     }
@@ -397,7 +397,7 @@ export function registerAccountHandlers(bot) {
 
   // Handler: Menu Reset Limit Akun
   const showResetLimitMenu = async (ctx) => {
-    const limited = getLimitedAccounts();
+    const limited = await getLimitedAccounts();
     if (limited.length === 0) {
       return ctx.replyWithMarkdown("🎉 *Tidak ada akun yang terkena limit untuk direset.*");
     }
@@ -430,13 +430,13 @@ export function registerAccountHandlers(bot) {
     const targetId = ctx.match[1];
 
     if (targetId === "ALL") {
-      const limited = getLimitedAccounts();
+      const limited = await getLimitedAccounts();
       for (const acc of limited) {
-        clearAccountLimit(acc.id);
+        await clearAccountLimit(acc.id);
       }
       return ctx.replyWithMarkdown(`✅ *Sukses!* Status limit untuk *${limited.length} akun* telah direset ke Normal.`);
     } else {
-      clearAccountLimit(targetId);
+      await clearAccountLimit(targetId);
       return ctx.replyWithMarkdown(`✅ *Sukses!* Akun *[${targetId}]* telah direset dan siap digunakan kembali.`);
     }
   });
@@ -447,7 +447,7 @@ export function registerAccountHandlers(bot) {
     const parts = ctx.message.text.split(" ");
     const targetId = parts[1]?.trim();
 
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
 
     const target = targetId ? accounts.find(a => a.id === targetId || a.username === targetId) : accounts[0];

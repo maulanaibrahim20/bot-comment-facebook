@@ -18,7 +18,7 @@ export function registerCampaignHandlers(bot) {
       );
     }
 
-    const targets = getTargets();
+    const targets = await getTargets();
     await ctx.replyWithMarkdown(
       `🎯 *Komentar ke URL Target Spesifik*\n\n` +
       `Pilih metode yang ingin digunakan:\n\n` +
@@ -53,6 +53,19 @@ export function registerCampaignHandlers(bot) {
       return ctx.reply("Silakan kirimkan link URL postingan Facebook target (awali http/https):");
     }
     await executeTargetCampaign(ctx, url);
+  });
+
+  bot.command("targets", async (ctx) => {
+    const targets = await getTargets();
+    if (!targets || targets.length === 0) {
+      return ctx.reply("📁 Belum ada target tersimpan di database/config.");
+    }
+    const list = targets
+      .map((t, idx) => `${idx + 1}. \`${t.url}\`${t.comment ? `\n   💬 _"${t.comment}"_` : ""}`)
+      .join("\n");
+    return ctx.replyWithMarkdown(
+      `🎯 *Daftar Target Tersimpan (${targets.length}):*\n\n${list}\n\n_Gunakan tombol '🎯 Komentar Target URL' atau '/target <url>' untuk menjalankan._`
+    );
   });
 
   // Menjalankan Komentar Beranda

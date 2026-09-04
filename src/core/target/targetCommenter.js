@@ -16,7 +16,7 @@ export class TargetCommenter {
    * Menjalankan aksi komentar untuk 1 akun pada 1 target postingan spesifik (URL)
    */
   static async postComment(account, target, options = {}) {
-    const settings = getSettings();
+    const settings = await getSettings();
     const commentText = parseSpintax(target.commentTemplate);
     logger.account(account.id, `Mempersiapkan komentar target: "${commentText}"`);
 
@@ -85,7 +85,7 @@ export class TargetCommenter {
    * Menjalankan kampanye batch ke target URL spesifik
    */
   static async runCampaign(accounts, targets, options = {}) {
-    const settings = getSettings();
+    const settings = await getSettings();
     const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
     const targetsList = Array.isArray(targets) ? targets : [targets];
     const activeTargets = targetsList.filter((t) => t.active !== false);

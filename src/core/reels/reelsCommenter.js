@@ -341,7 +341,7 @@ export class ReelsCommenter {
    * Menjalankan aksi komentar pada FACEBOOK REELS dengan step-by-step progress & interruptible stop
    */
   static async postRandomReelsComments(account, options = {}) {
-    const settings = getSettings();
+    const settings = await getSettings();
     const countToComment = options.count !== undefined ? options.count : 10;
     const isUnlimited = countToComment === 0 || countToComment === -1;
     const targetCountText = isUnlimited
@@ -527,7 +527,7 @@ export class ReelsCommenter {
         if (await CommentGuard.checkIsActionBlocked(page)) {
           isBlocked = true;
           blockedReason = "Pop-up pembatasan / limit komentar Facebook";
-          markAccountLimited(account.id, blockedReason);
+          await markAccountLimited(account.id, blockedReason);
           logger.error(
             `🛑 [${account.id}] Terkena limit pembatasan komentar Facebook.`,
           );
@@ -540,7 +540,7 @@ export class ReelsCommenter {
         }
 
         // VALIDASI 1: Cek riwayat lokal apakah akun ini sudah pernah berkomentar di Reel ini
-        if (hasAccountCommentedOn(account.id, reelKey)) {
+        if (await hasAccountCommentedOn(account.id, reelKey)) {
           logger.info(
             `⏩ [${account.id}] Reel ini (${reelKey}) sudah pernah Anda komentari sebelumnya. Melewati (skip) ke Reel berikutnya...`,
           );
@@ -625,7 +625,7 @@ export class ReelsCommenter {
             logger.info(
               `⏩ [${account.id}] ${alreadyCheck.reason}. Melewati (skip) ke Reel berikutnya...`,
             );
-            markCommentedHistory(account.id, reelKey);
+            await markCommentedHistory(account.id, reelKey);
             if (onProgress)
               await onProgress("SKIPPED_ALREADY_COMMENTED", {
                 accountId: account.id,
@@ -675,7 +675,7 @@ export class ReelsCommenter {
               isBlocked = true;
               blockedReason =
                 "Terdeteksi pembatasan komentar Facebook: Tidak Ada Izin untuk Menambahkan Komentar / Limit Tercapai";
-              markAccountLimited(account.id, blockedReason);
+              await markAccountLimited(account.id, blockedReason);
               logger.error(`🛑 [${account.id}] ${blockedReason}.`);
               logger.error(
                 `🛑 [${account.id}] Bot otomatis berhenti dan langsung menutup browser sekarang demi keamanan akun.`,
@@ -707,7 +707,7 @@ export class ReelsCommenter {
                 isBlocked = true;
                 blockedReason =
                   "Terdeteksi pembatasan komentar Facebook: Tidak Ada Izin untuk Menambahkan Komentar / Limit Tercapai";
-                markAccountLimited(account.id, blockedReason);
+                await markAccountLimited(account.id, blockedReason);
                 logger.error(`🛑 [${account.id}] ${blockedReason}.`);
                 logger.error(
                   `🛑 [${account.id}] Bot otomatis berhenti dan langsung menutup browser sekarang demi keamanan akun.`,
@@ -722,7 +722,7 @@ export class ReelsCommenter {
             }
 
             if (verifyResult.isConfirmed) {
-              markCommentedHistory(account.id, reelKey);
+              await markCommentedHistory(account.id, reelKey);
               consecutiveFailures = 0;
               commentedCount++;
               const progressText = isUnlimited
@@ -797,7 +797,7 @@ export class ReelsCommenter {
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             isBlocked = true;
             blockedReason = `Gagal mengirim komentar ${MAX_CONSECUTIVE_FAILURES}x berturut-turut di Reels (Indikasi limit / shadowban Facebook)`;
-            markAccountLimited(account.id, blockedReason);
+            await markAccountLimited(account.id, blockedReason);
             logger.error(
               `🛑 [${account.id}] ${blockedReason}. Bot otomatis berhenti pada akun ini demi keamanan.`,
             );
@@ -849,7 +849,7 @@ export class ReelsCommenter {
    * Menjalankan kampanye acak untuk semua akun di Facebook Reels
    */
   static async runRandomReelsCampaign(accounts, options = {}) {
-    const settings = getSettings();
+    const settings = await getSettings();
     const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
     const concurrency = options.concurrency || 1;
 

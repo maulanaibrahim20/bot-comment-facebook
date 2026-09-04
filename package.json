@@ -7,9 +7,16 @@
   "scripts": {
     "start": "node src/index.js",
     "telegram": "node src/telegram/bot.js",
-    "test": "node src/test/test_utils.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:legacy": "node src/test/test_utils.js",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "db:seed": "node prisma/seed.js",
+    "postinstall": "prisma generate && playwright install chromium"
   },
-
   "keywords": [
     "facebook",
     "bot",
@@ -22,6 +29,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "chalk": "^5.3.0",
     "cli-table3": "^0.6.5",
     "dotenv": "^16.6.1",
@@ -32,5 +40,9 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "telegraf": "^4.16.3",
     "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3",
+    "vitest": "^4.1.11"
   }
 }

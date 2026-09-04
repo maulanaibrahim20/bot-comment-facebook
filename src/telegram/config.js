@@ -20,7 +20,21 @@ export function loadTelegramConfig() {
     } catch (e) {}
   }
 
-  const systemDefaults = getDefaultCampaignOptions();
+  let systemDefaults = {
+    commentTemplate: "https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R",
+    delaySeconds: 15,
+    commentAs: "PERSONAL",
+    targetPageName: "",
+    headless: false,
+    minComments: 0,
+    maxComments: 0
+  };
+  if (fs.existsSync(paths.settingsFile)) {
+    try {
+      const s = JSON.parse(fs.readFileSync(paths.settingsFile, "utf-8"));
+      if (s && s.defaults) systemDefaults = { ...systemDefaults, ...s.defaults };
+    } catch (e) {}
+  }
 
   return {
     botToken: loaded.botToken || "",
@@ -50,7 +64,7 @@ export function saveTelegramConfig(config) {
         headless: config.defaultSettings.headless,
         minComments: config.defaultSettings.minComments,
         maxComments: config.defaultSettings.maxComments
-      });
+      }).catch(() => {});
     }
   } catch (e) {}
 }

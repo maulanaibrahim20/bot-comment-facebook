@@ -1,32 +1,35 @@
 {
   "browser": {
-    "headless": false,
     "slowMo": 50,
+    "headless": false,
     "viewport": {
       "width": 1280,
       "height": 720
     },
-    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "timeoutMs": 60000
+    "timeoutMs": 60000,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
   },
   "delays": {
-    "minTypingDelayMs": 80,
+    "maxActionDelayMs": 7000,
     "maxTypingDelayMs": 220,
     "minActionDelayMs": 3000,
-    "maxActionDelayMs": 7000,
-    "minBetweenAccountsDelayMs": 20000,
-    "maxBetweenAccountsDelayMs": 45000
+    "minTypingDelayMs": 80,
+    "maxBetweenAccountsDelayMs": 45000,
+    "minBetweenAccountsDelayMs": 20000
   },
   "safety": {
-    "maxCommentsPerAccountPerDay": 10,
     "stopOnError": false,
-    "screenshotOnError": true
+    "screenshotOnError": true,
+    "maxCommentsPerAccountPerDay": 10
   },
   "defaults": {
     "commentTemplate": "https://whatsapp.com/channel/0029VbDanrVD38CMAgA7L91R",
     "delaySeconds": 10,
     "commentAs": "PAGE",
     "targetPageName": "",
-    "headless": false
+    "headless": false,
+    "minComments": 0,
+    "maxComments": 0,
+    "testOptionKey": "vitest_val_1788547828600"
   }
 }
