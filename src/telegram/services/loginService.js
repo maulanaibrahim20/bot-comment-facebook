@@ -25,11 +25,12 @@ export function buildVerificationKeyboard(accountId, currentUrl) {
   }
 
   inlineButtons.push([
-    Markup.button.url("🔔 Buka Notifikasi Facebook (Approve di HP)", "https://www.facebook.com/notifications")
+    Markup.button.callback("🤖 Klik 'Saya Bukan Robot'", `CLICK_RECAPTCHA_${accountId}`),
+    Markup.button.callback("📸 Cek Layar Terkini", `SCREENSHOT_${accountId}`)
   ]);
 
   inlineButtons.push([
-    Markup.button.callback("📸 Cek Layar Terkini", `SCREENSHOT_${accountId}`),
+    Markup.button.url("🔔 Buka Notifikasi Facebook (Approve di HP)", "https://www.facebook.com/notifications"),
     Markup.button.callback("🛑 Batalkan Login", `CANCEL_LOGIN_${accountId}`)
   ]);
 
@@ -66,7 +67,7 @@ export async function executeLoginAccounts(ctx, targetId = "all", options = {}) 
     `• *Mode Tampilan:* ${modeText}\n` +
     `• *Mode Eksekusi:* *${parallelText}*\n` +
     `• *Batas Waktu Tunggu:* ${maxWaitSeconds} detik\n\n` +
-    `_Jika Facebook meminta verifikasi akun, link verifikasi dan tangkapan layar akan otomatis dikirimkan ke chat Telegram ini._`,
+    `_Jika Facebook meminta verifikasi akun, tangkapan layar dan tombol bantuan akan otomatis dikirimkan ke chat Telegram ini._`,
     getRunningKeyboard()
   );
 
@@ -87,8 +88,8 @@ export async function executeLoginAccounts(ctx, targetId = "all", options = {}) 
 
             let urlText = "";
             if (isEncrypted2FA) {
-              urlText = `🔐 *Status:* Halaman Autentikasi 2 Langkah (2FA) Terbuka di Server\n` +
-                `_(Tautan ini terenkripsi sesi browser server dan tidak bisa dibuka langsung dari HP/PC lain)_\n\n`;
+              urlText = `🔐 *Status:* Halaman Autentikasi / Keamanan Terbuka di Browser Bot\n` +
+                `_(Tautan ini terenkripsi sesi browser server dan tidak dapat dibuka dari HP/PC lain)_\n\n`;
             } else if (isSpecificUrl) {
               urlText = `🔗 *Link Verifikasi Khusus:*\n${data.currentUrl}\n\n`;
             } else {
@@ -96,9 +97,10 @@ export async function executeLoginAccounts(ctx, targetId = "all", options = {}) 
             }
 
             const stepInstructions = `👉 *Cara Menyelesaikan:*\n` +
-              `1. **Ketik Kode OTP 6-Digit**: Cek aplikasi Authenticator / SMS di HP Anda, lalu *langsung balas chat ini dengan angka OTP* (contoh: \`123456\`). Bot akan langsung mengetikkannya ke layar login!\n` +
-              `2. **Atau Setujui di HP**: Buka aplikasi Facebook di HP Anda (Tab Notifikasi 🔔), lalu ketuk pemberitahuan masuk dan pilih *"Ya, ini saya" (Approve)*.\n` +
-              (isSpecificUrl ? `3. Atau buka tautan verifikasi khusus di atas melalui browser HP Anda.\n` : "") +
+              `1. **Jika Muncul "Saya Bukan Robot"**: Tekan tombol **[🤖 Klik 'Saya Bukan Robot']** di bawah agar bot mengekliknya.\n` +
+              `2. **Ketik Kode OTP 6-Digit**: Cek aplikasi Authenticator / SMS di HP Anda, lalu *langsung balas chat ini dengan angka OTP* (contoh: \`123456\`). Bot akan langsung mengetikkannya ke layar login!\n` +
+              `3. **Atau Setujui di HP**: Buka aplikasi Facebook di HP Anda (Tab Notifikasi 🔔), lalu ketuk pemberitahuan masuk dan pilih *"Ya, ini saya" (Approve)*.\n` +
+              (isSpecificUrl ? `4. Atau buka tautan verifikasi khusus di atas melalui browser HP Anda.\n` : "") +
               `\n⏳ Tersisa waktu tunggu: *${data.remainingSec}s*`;
 
             // Jika ada screenshot awal / verifikasi, kirimkan sebagai foto

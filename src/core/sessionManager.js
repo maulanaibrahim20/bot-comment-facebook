@@ -257,6 +257,9 @@ export class SessionManager {
       // Beri jeda agar Facebook memproses autentikasi (3-4 detik)
       await randomDelay(3000, 4500);
 
+      // Coba klik Google reCAPTCHA jika langsung muncul
+      await SessionManager.handleRecaptcha(page);
+
       // 6. Loop Pemantauan Persetujuan Login (Polling c_user & Checkpoint Removal)
       logger.account(account.id, 'Memantau status login (menunggu persetujuan HP / 2FA)...');
       let isSuccess = false;
@@ -289,6 +292,9 @@ export class SessionManager {
         }
 
         await randomDelay(2000, 3000);
+
+        // Coba deteksi dan klik reCAPTCHA jika halaman menampilkan verifikasi bot
+        await SessionManager.handleRecaptcha(page);
 
         // Log info berkala setiap 45 detik agar tidak membanjiri chat Telegram
         if (Date.now() - lastLogTime > 45000) {
@@ -483,5 +489,63 @@ export class SessionManager {
 
     logger.success(`\n🎉 Proses login selesai! Total akun diproses: ${results.length}`);
     return results;
+  }
+
+  /**
+   * Mendeteksi dan mencoba menyelesaikan reCAPTCHA Google secara otomatis jika muncul
+   */
+  static async handleRecaptcha(page) {
+    if (!page || page.isClosed()) return false;
+    try {
+      // 1. Periksa iframe Google reCAPTCHA
+      const frames = page.frames();
+      for (const frame of frames) {
+        const frameUrl = frame.url();
+        if (
+          frameUrl.includes('google.com/recaptcha') || 
+          frameUrl.includes('recaptcha/enterprise') || 
+          frameUrl.includes('recaptcha/api2')
+        ) {
+          const checkbox = frame.locator('#recaptcha-anchor, .recaptcha-checkbox, div[role="checkbox"]').first();
+          if (await checkbox.isVisible({ timeout: 1000 }).catch(() => false)) {
+            const ariaChecked = await checkbox.getAttribute('aria-checked').catch(() => 'false');
+            if (ariaChecked !== 'true') {
+              logger.info('Mendeteksi Google reCAPTCHA ("Saya bukan robot"), mencoba klik otomatis...');
+              await checkbox.click({ force: true }).catch(() => {});
+              await randomDelay(3000, 4500);
+
+              // Cek apakah ada tombol Submit / Lanjutkan di halaman utama setelah dicentang
+              const submitSelectors = [
+                'button[type="submit"]',
+                'button:has-text("Lanjutkan")',
+                'button:has-text("Continue")',
+                'button:has-text("Kirim")',
+                'button:has-text("Submit")',
+                'input[type="submit"]'
+              ];
+              for (const sel of submitSelectors) {
+                const btn = page.locator(sel).first();
+                if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+                  await btn.click({ force: true }).catch(() => {});
+                  break;
+                }
+              }
+              return true;
+            }
+          }
+        }
+      }
+
+      // 2. Periksa elemen langsung jika reCAPTCHA tidak dalam iframe standar
+      const directCheckbox = page.locator('#recaptcha-anchor, .recaptcha-checkbox').first();
+      if (await directCheckbox.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await directCheckbox.click({ force: true }).catch(() => {});
+        await randomDelay(2000, 3000);
+        return true;
+      }
+    } catch (e) {
+      // Abaikan error pengecekan recaptcha
+    }
+    return false;
   }
 }

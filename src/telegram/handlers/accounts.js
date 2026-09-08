@@ -8,7 +8,7 @@ import {
   getLimitedAccounts, 
   clearAccountLimit 
 } from "../../config.js";
-import { SessionManager } from "../../core/sessionManager.js";
+import { SessionManager, activeLoginSessions } from "../../core/sessionManager.js";
 import { ProfileSwitcher } from "../../core/profileSwitcher.js";
 import { createAccountBrowserContext } from "../../browser.js";
 import { userStates, campaignState } from "../state.js";
@@ -165,6 +165,26 @@ export function registerAccountHandlers(bot) {
       );
     } else {
       await ctx.reply(`⚠️ Tidak dapat mengambil screenshot untuk [${accountId}]. Kemungkinan browser sudah selesai atau sesi login telah tertutup.`);
+    }
+  });
+
+  bot.action(/CLICK_RECAPTCHA_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    await ctx.answerCbQuery("🤖 Mencoba mengeklik 'Saya bukan robot'...");
+    const page = activeLoginSessions.get(accountId);
+    if (!page || page.isClosed()) {
+      return ctx.reply(`⚠️ Sesi browser untuk [${accountId}] tidak aktif atau sudah selesai.`);
+    }
+
+    try {
+      const clicked = await SessionManager.handleRecaptcha(page);
+      if (clicked) {
+        await ctx.reply(`✅ Berhasil mengeklik 'Saya bukan robot' untuk [${accountId}]! Facebook sedang memproses... Tunggu sejenak lalu cek layar terkini.`);
+      } else {
+        await ctx.reply(`ℹ️ Checkbox reCAPTCHA tidak ditemukan atau sudah tercentang pada halaman [${accountId}].`);
+      }
+    } catch (err) {
+      await ctx.reply(`⚠️ Gagal saat mencoba klik reCAPTCHA: ${err.message}`);
     }
   });
 
