@@ -151,8 +151,8 @@ export class SessionManager {
    */
   static async loginAccount(account, options = {}) {
     logger.account(account.id, `Memulai proses login untuk ${account.username}...`);
-    const headless = options.headless !== undefined ? options.headless : false;
-    const maxWaitSeconds = options.maxWaitSeconds || (headless ? 60 : 300); // 5 menit jika mode visual
+    const headless = options.headless !== undefined ? options.headless : true;
+    const maxWaitSeconds = options.maxWaitSeconds || 300; // 5 menit agar leluasa verifikasi di HP
 
     let browserInstance;
     try {
@@ -290,15 +290,28 @@ export class SessionManager {
 
         await randomDelay(2000, 3000);
 
-        // Log info berkala setiap 15 detik agar user tahu bot masih menunggu
-        if (Date.now() - lastLogTime > 15000) {
+        // Log info berkala setiap 45 detik agar tidak membanjiri chat Telegram
+        if (Date.now() - lastLogTime > 45000) {
           const remainingSec = Math.round((maxWaitSeconds * 1000 - (Date.now() - startTime)) / 1000);
           logger.account(account.id, `Sedang menunggu persetujuan di HP... (Tersisa waktu tunggu: ${remainingSec}s)`);
+          
+          let currentUrl = page.url();
+          if (currentUrl.endsWith('facebook.com/') || currentUrl.endsWith('facebook.com')) {
+            const subUrl = await page.evaluate(() => {
+              const checkpointLink = document.querySelector('a[href*="checkpoint"], a[href*="challenge"]');
+              if (checkpointLink) return checkpointLink.href;
+              const iframe = document.querySelector('iframe[src*="checkpoint"], iframe[src*="facebook.com/login"]');
+              if (iframe) return iframe.src;
+              return null;
+            }).catch(() => null);
+            if (subUrl) currentUrl = subUrl;
+          }
+
           if (options.onProgress) {
             await options.onProgress('WAITING_APPROVAL', {
               accountId: account.id,
               remainingSec,
-              currentUrl: page.url()
+              currentUrl
             });
           }
           lastLogTime = Date.now();

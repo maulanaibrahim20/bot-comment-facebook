@@ -25,7 +25,7 @@ export function loadTelegramConfig() {
     delaySeconds: 15,
     commentAs: "PERSONAL",
     targetPageName: "",
-    headless: false,
+    headless: true,
     minComments: 0,
     maxComments: 0
   };

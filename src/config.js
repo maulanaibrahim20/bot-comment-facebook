@@ -60,7 +60,7 @@ export const paths = {
 
 export const DEFAULT_SETTINGS = {
   browser: {
-    headless: false,
+    headless: true,
     slowMo: 50,
     viewport: { width: 1280, height: 720 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -84,7 +84,7 @@ export const DEFAULT_SETTINGS = {
     delaySeconds: 15,
     commentAs: "PERSONAL",
     targetPageName: "",
-    headless: false,
+    headless: true,
     minComments: 0,
     maxComments: 0
   }

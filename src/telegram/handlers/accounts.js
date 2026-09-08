@@ -122,27 +122,8 @@ export function registerAccountHandlers(bot) {
 
   bot.action(/LOGIN_(.+)/, async (ctx) => {
     const targetId = ctx.match[1];
-    await ctx.answerCbQuery();
-
-    await safeReplyWithMarkdown(
-      ctx,
-      `🖥️ *Pilih Tampilan Browser untuk Login [${escapeMarkdown(targetId)}]:*\n\n` +
-      `• *🖥️ Buka Jendela Browser di PC (Visual)*:\n` +
-      `  Jendela browser Chrome akan muncul langsung di layar komputer Anda. Sangat disarankan jika ada verifikasi CAPTCHA, video selfie, atau konfirmasi tombol persetujuan di layar.\n\n` +
-      `• *🕶️ Latar Belakang (Headless)*:\n` +
-      `  Browser berjalan di background tanpa membuka jendela di PC. Tautan verifikasi, screenshot, dan kode OTP dikontrol via Telegram.`,
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback("🖥️ Buka Jendela Browser di PC (Visual)", `LOGINEXEC_${targetId}_visual`)
-        ],
-        [
-          Markup.button.callback("🕶️ Latar Belakang (Headless)", `LOGINEXEC_${targetId}_headless`)
-        ],
-        [
-          Markup.button.callback("🔙 Batal", "CANCEL_LOGIN_PROMPT")
-        ]
-      ])
-    );
+    await ctx.answerCbQuery("Memulai login di latar belakang (Headless)...");
+    executeLoginAccounts(ctx, targetId, { headless: true });
   });
 
   bot.action(/LOGINEXEC_(.+)_(visual|headless)/, async (ctx) => {
@@ -215,19 +196,8 @@ export function registerAccountHandlers(bot) {
     const parts = ctx.message.text.split(" ");
     const targetId = parts[1]?.trim() || "all";
     const modeArg = parts[2]?.trim()?.toLowerCase();
-
-    if (modeArg === "visual" || modeArg === "headless") {
-      executeLoginAccounts(ctx, targetId, { headless: modeArg === "headless" });
-    } else {
-      await ctx.replyWithMarkdown(
-        `🖥️ *Pilih Tampilan Browser untuk Login [${targetId}]:*`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback("🖥️ Buka Jendela Browser di PC (Visual)", `LOGINEXEC_${targetId}_visual`)],
-          [Markup.button.callback("🕶️ Latar Belakang (Headless)", `LOGINEXEC_${targetId}_headless`)],
-          [Markup.button.callback("🔙 Batal", "CANCEL_LOGIN_PROMPT")]
-        ])
-      );
-    }
+    const isHeadless = modeArg === "visual" ? false : true;
+    executeLoginAccounts(ctx, targetId, { headless: isHeadless });
   });
 
   bot.hears("🩺 Cek Status Sesi", async (ctx) => {
