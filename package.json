@@ -15,7 +15,11 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
-    "postinstall": "prisma generate && playwright install chromium"
+    "postinstall": "prisma generate && playwright install chromium",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart fb-bot-telegram",
+    "pm2:stop": "pm2 stop fb-bot-telegram",
+    "pm2:logs": "pm2 logs fb-bot-telegram"
   },
   "keywords": [
     "facebook",
