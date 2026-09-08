@@ -19,7 +19,8 @@
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart fb-bot-telegram",
     "pm2:stop": "pm2 stop fb-bot-telegram",
-    "pm2:logs": "pm2 logs fb-bot-telegram"
+    "pm2:logs": "pm2 logs fb-bot-telegram",
+    "pm2:start2": "pm2 start src/telegram/bot.js --watch --name bot_tele"
   },
   "keywords": [
     "facebook",
