@@ -497,6 +497,12 @@ export class SessionManager {
   static async handleRecaptcha(page) {
     if (!page || page.isClosed()) return false;
     try {
+      // Jika tantangan puzzle gambar sudah terbuka, JANGAN klik checkbox 'Saya bukan robot' lagi
+      // karena mengklik checkbox anchor saat challenge aktif akan me-reset/menghapus centang pilihan kotak user!
+      if (await SessionManager.isRecaptchaChallengeVisible(page)) {
+        return false;
+      }
+
       // 1. Periksa iframe Google reCAPTCHA
       const frames = page.frames();
       for (const frame of frames) {
