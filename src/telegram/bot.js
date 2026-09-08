@@ -13,7 +13,8 @@ export const bot = new Telegraf(BOT_TOKEN || "dummy_token", {
 
 // Tangani error update Telegram agar proses bot tidak crash
 bot.catch((err, ctx) => {
-  logger.warn(`[Telegram Error] Terjadi error pada update ${ctx?.updateType || 'unknown'}: ${err.message}`);
+  const detail = err.response?.description || err.message;
+  logger.warn(`[Telegram Error] Terjadi error pada update ${ctx?.updateType || 'unknown'}: ${detail}`);
 });
 
 // Middleware Keamanan: Pastikan hanya pemilik bot yang bisa mengakses

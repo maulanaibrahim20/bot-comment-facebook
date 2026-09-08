@@ -14,54 +14,62 @@ import { createAccountBrowserContext } from "../../browser.js";
 import { userStates, campaignState } from "../state.js";
 import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
 import { executeLoginAccounts, buildVerificationKeyboard } from "../services/loginService.js";
+import { safeReplyWithMarkdown, escapeMarkdown } from "../utils/safeMarkdown.js";
 
 export function registerAccountHandlers(bot) {
   bot.hears("👥 Daftar Akun Facebook", async (ctx) => {
-    if (campaignState.isRunning) {
-      return ctx.reply(
-        "⚠️ Bot sedang berjalan! Gunakan menu ini saat bot dalam keadaan standby.",
-        getRunningKeyboard()
-      );
-    }
+    try {
+      if (campaignState.isRunning) {
+        return ctx.reply(
+          "⚠️ Bot sedang berjalan! Gunakan menu ini saat bot dalam keadaan standby.",
+          getRunningKeyboard()
+        );
+      }
 
-    userStates.delete(ctx.from.id);
-    const accounts = await getAccounts();
-    if (accounts.length === 0) {
-      return ctx.replyWithMarkdown(
-        "⚠️ Belum ada akun terdaftar di sistem.\n\nKlik tombol di bawah atau ketik `/addaccount email|password` untuk menambah akun.",
+      userStates.delete(ctx.from.id);
+      const accounts = await getAccounts();
+      if (accounts.length === 0) {
+        return safeReplyWithMarkdown(
+          ctx,
+          "⚠️ Belum ada akun terdaftar di sistem.\n\nKlik tombol di bawah atau ketik `/addaccount email|password` untuk menambah akun.",
+          Markup.inlineKeyboard([
+            [Markup.button.callback("➕ Tambah Akun Baru", "TRIGGER_ADD_ACCOUNT")]
+          ])
+        );
+      }
+
+      let text = `👥 *Daftar Akun Facebook Terdaftar (${accounts.length}):*\n\n`;
+      accounts.forEach((acc, i) => {
+        const hasSession = hasAccountSession(acc.id);
+        const sessionEmoji = hasSession ? "✅ Login Tersimpan" : "❌ Belum Login";
+        const limitNote = acc.isLimited
+          ? `\n   └ 🛑 *STATUS: TERKENA LIMIT KOMENTAR*\n      • Alasan: _${escapeMarkdown(acc.limitReason || 'Limit Facebook')}_\n      • Waktu: _${acc.limitedAt ? new Date(acc.limitedAt).toLocaleString('id-ID') : '-'}_`
+          : "";
+        text += `${i + 1}. *[${escapeMarkdown(acc.id)}]* \`${acc.username}\`\n   └ Status: ${sessionEmoji} | 2FA: ${acc.twoFactorSecret ? "Ada" : "-"}${limitNote}\n\n`;
+      });
+
+      await safeReplyWithMarkdown(
+        ctx,
+        text,
         Markup.inlineKeyboard([
-          [Markup.button.callback("➕ Tambah Akun Baru", "TRIGGER_ADD_ACCOUNT")]
+          [
+            Markup.button.callback("➕ Tambah Akun", "TRIGGER_ADD_ACCOUNT"),
+            Markup.button.callback("🔑 Login Akun", "TRIGGER_LOGIN_MENU")
+          ],
+          [
+            Markup.button.callback("⚠️ Akun Limit", "TRIGGER_VIEW_LIMITED"),
+            Markup.button.callback("🔄 Reset Limit", "TRIGGER_RESET_LIMIT")
+          ],
+          [
+            Markup.button.callback("🚩 Cek Halaman (Fanspage)", "TRIGGER_CHECK_PAGES"),
+            Markup.button.callback("🗑️ Hapus Akun", "TRIGGER_DELETE_MENU")
+          ]
         ])
       );
+    } catch (err) {
+      console.error("[Telegram Accounts] Error:", err);
+      return ctx.reply(`⚠️ Gagal memuat daftar akun: ${err.message}`);
     }
-
-    let text = `👥 *Daftar Akun Facebook Terdaftar (${accounts.length}):*\n\n`;
-    accounts.forEach((acc, i) => {
-      const hasSession = hasAccountSession(acc.id);
-      const sessionEmoji = hasSession ? "✅ Login Tersimpan" : "❌ Belum Login";
-      const limitNote = acc.isLimited
-        ? `\n   └ 🛑 *STATUS: TERKENA LIMIT KOMENTAR*\n      • Alasan: _${acc.limitReason || 'Limit Facebook'}_\n      • Waktu: _${acc.limitedAt ? new Date(acc.limitedAt).toLocaleString('id-ID') : '-'}_`
-        : "";
-      text += `${i + 1}. *[${acc.id}]* ${acc.username}\n   └ Status: ${sessionEmoji} | 2FA: ${acc.twoFactorSecret ? "Ada" : "-"}${limitNote}\n\n`;
-    });
-
-    await ctx.replyWithMarkdown(
-      text,
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback("➕ Tambah Akun", "TRIGGER_ADD_ACCOUNT"),
-          Markup.button.callback("🔑 Login Akun", "TRIGGER_LOGIN_MENU")
-        ],
-        [
-          Markup.button.callback("⚠️ Akun Limit", "TRIGGER_VIEW_LIMITED"),
-          Markup.button.callback("🔄 Reset Limit", "TRIGGER_RESET_LIMIT")
-        ],
-        [
-          Markup.button.callback("🚩 Cek Halaman (Fanspage)", "TRIGGER_CHECK_PAGES"),
-          Markup.button.callback("🗑️ Hapus Akun", "TRIGGER_DELETE_MENU")
-        ]
-      ])
-    );
   });
 
   bot.action("TRIGGER_ADD_ACCOUNT", async (ctx) => {
@@ -103,7 +111,8 @@ export function registerAccountHandlers(bot) {
 
     buttons.push([Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")]);
 
-    await ctx.replyWithMarkdown(
+    await safeReplyWithMarkdown(
+      ctx,
       `🔑 *Pilih Akun yang Ingin di-Login:*\n\n` +
         `• Pilih *'🚀 Login SEMUA Akun Sekaligus (Paralel)'* untuk membuka browser semua akun secara bersamaan.\n` +
         `• Atau pilih salah satu akun di bawah jika hanya ingin login akun tertentu:`,
@@ -115,8 +124,9 @@ export function registerAccountHandlers(bot) {
     const targetId = ctx.match[1];
     await ctx.answerCbQuery();
 
-    await ctx.replyWithMarkdown(
-      `🖥️ *Pilih Tampilan Browser untuk Login [${targetId}]:*\n\n` +
+    await safeReplyWithMarkdown(
+      ctx,
+      `🖥️ *Pilih Tampilan Browser untuk Login [${escapeMarkdown(targetId)}]:*\n\n` +
       `• *🖥️ Buka Jendela Browser di PC (Visual)*:\n` +
       `  Jendela browser Chrome akan muncul langsung di layar komputer Anda. Sangat disarankan jika ada verifikasi CAPTCHA, video selfie, atau konfirmasi tombol persetujuan di layar.\n\n` +
       `• *🕶️ Latar Belakang (Headless)*:\n` +
@@ -331,10 +341,11 @@ export function registerAccountHandlers(bot) {
 
     const hasSession = hasAccountSession(accountId);
 
-    await ctx.replyWithMarkdown(
+    await safeReplyWithMarkdown(
+      ctx,
       `⚠️ *Konfirmasi Hapus Akun Facebook*\n\n` +
         `• *ID Akun:* \`${target.id}\`\n` +
-        `• *Username:* *${target.username}*\n` +
+        `• *Username:* \`${target.username}\`\n` +
         `• *Status Sesi:* ${hasSession ? "✅ Ada file sesi login tersimpan" : "❌ Tidak ada sesi"}\n\n` +
         `Silakan pilih opsi penghapusan:\n` +
         `1. *Hapus Akun + Sesi*: Menghapus akun dari sistem dan menghapus file sesi & profil browser secara permanen.\n` +
@@ -418,10 +429,11 @@ export function registerAccountHandlers(bot) {
     }
 
     const hasSession = hasAccountSession(target.id);
-    await ctx.replyWithMarkdown(
+    await safeReplyWithMarkdown(
+      ctx,
       `⚠️ *Konfirmasi Hapus Akun Facebook*\n\n` +
         `• *ID Akun:* \`${target.id}\`\n` +
-        `• *Username:* *${target.username}*\n` +
+        `• *Username:* \`${target.username}\`\n` +
         `• *Status Sesi:* ${hasSession ? "✅ Ada file sesi login tersimpan" : "❌ Tidak ada sesi"}\n\n` +
         `Silakan pilih opsi penghapusan:`,
       Markup.inlineKeyboard([
@@ -440,28 +452,34 @@ export function registerAccountHandlers(bot) {
 
   // Handler: Lihat Daftar Akun yang Terkena Limit
   const showLimitedAccountsTelegram = async (ctx) => {
-    const limited = await getLimitedAccounts();
-    if (limited.length === 0) {
-      return ctx.replyWithMarkdown("🎉 *Semua Akun Normal!*\n\nTidak ada akun yang tercatat terkena limit komentar Facebook saat ini.");
+    try {
+      const limited = await getLimitedAccounts();
+      if (limited.length === 0) {
+        return safeReplyWithMarkdown(ctx, "🎉 *Semua Akun Normal!*\n\nTidak ada akun yang tercatat terkena limit komentar Facebook saat ini.");
+      }
+
+      let msg = `🛑 *Daftar Akun Terkena Limit Komentar (${limited.length}):*\n\n`;
+      limited.forEach((acc, i) => {
+        const dateStr = acc.limitedAt ? new Date(acc.limitedAt).toLocaleString("id-ID") : "-";
+        msg += `${i + 1}. *[${escapeMarkdown(acc.id)}]* \`${acc.username}\`\n` +
+               `   • Alasan: _${escapeMarkdown(acc.limitReason || "Limit komentar Facebook")}_\n` +
+               `   • Waktu: _${dateStr}_\n\n`;
+      });
+
+      msg += `_Gunakan tombol di bawah jika masa limit sudah lewat untuk mereset statusnya ke normal._`;
+
+      await safeReplyWithMarkdown(
+        ctx,
+        msg,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("🔄 Reset Limit Akun", "TRIGGER_RESET_LIMIT")],
+          [Markup.button.callback("🔙 Tutup", "CANCEL_ACCOUNT_ACTION")]
+        ])
+      );
+    } catch (err) {
+      console.error("[Telegram Limited Error]:", err);
+      return ctx.reply(`⚠️ Gagal memuat akun limit: ${err.message}`);
     }
-
-    let msg = `🛑 *Daftar Akun Terkena Limit Komentar (${limited.length}):*\n\n`;
-    limited.forEach((acc, i) => {
-      const dateStr = acc.limitedAt ? new Date(acc.limitedAt).toLocaleString("id-ID") : "-";
-      msg += `${i + 1}. *[${acc.id}]* \`${acc.username}\`\n` +
-             `   • Alasan: _${acc.limitReason || "Limit komentar Facebook"}_\n` +
-             `   • Waktu: _${dateStr}_\n\n`;
-    });
-
-    msg += `_Gunakan tombol di bawah jika masa limit sudah lewat untuk mereset statusnya ke normal._`;
-
-    await ctx.replyWithMarkdown(
-      msg,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("🔄 Reset Limit Akun", "TRIGGER_RESET_LIMIT")],
-        [Markup.button.callback("🔙 Tutup", "CANCEL_ACCOUNT_ACTION")]
-      ])
-    );
   };
 
   bot.action("TRIGGER_VIEW_LIMITED", async (ctx) => {
@@ -475,23 +493,29 @@ export function registerAccountHandlers(bot) {
 
   // Handler: Menu Reset Limit Akun
   const showResetLimitMenu = async (ctx) => {
-    const limited = await getLimitedAccounts();
-    if (limited.length === 0) {
-      return ctx.replyWithMarkdown("🎉 *Tidak ada akun yang terkena limit untuk direset.*");
+    try {
+      const limited = await getLimitedAccounts();
+      if (limited.length === 0) {
+        return safeReplyWithMarkdown(ctx, "🎉 *Tidak ada akun yang terkena limit untuk direset.*");
+      }
+
+      const buttons = limited.map((acc) => [
+        Markup.button.callback(`🔄 Reset [${acc.id}] (${acc.username})`, `EXEC_RESET_LIMIT_${acc.id}`)
+      ]);
+
+      buttons.push([Markup.button.callback("✨ Reset SEMUA Akun ke Normal", "EXEC_RESET_LIMIT_ALL")]);
+      buttons.push([Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")]);
+
+      await safeReplyWithMarkdown(
+        ctx,
+        `🔄 *Reset Status Limit Komentar*\n\n` +
+        `Pilih akun yang ingin dikembalikan statusnya ke Normal:`,
+        Markup.inlineKeyboard(buttons)
+      );
+    } catch (err) {
+      console.error("[Telegram Reset Limit Error]:", err);
+      return ctx.reply(`⚠️ Gagal membuka menu reset limit: ${err.message}`);
     }
-
-    const buttons = limited.map((acc) => [
-      Markup.button.callback(`🔄 Reset [${acc.id}] (${acc.username})`, `EXEC_RESET_LIMIT_${acc.id}`)
-    ]);
-
-    buttons.push([Markup.button.callback("✨ Reset SEMUA Akun ke Normal", "EXEC_RESET_LIMIT_ALL")]);
-    buttons.push([Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")]);
-
-    await ctx.replyWithMarkdown(
-      `🔄 *Reset Status Limit Komentar*\n\n` +
-      `Pilih akun yang ingin dikembalikan statusnya ke Normal:`,
-      Markup.inlineKeyboard(buttons)
-    );
   };
 
   bot.action("TRIGGER_RESET_LIMIT", async (ctx) => {

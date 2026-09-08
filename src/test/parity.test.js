@@ -283,4 +283,51 @@ describe('Feature Parity: CLI vs Telegram Bot', () => {
     expect(normalBtn).toBeDefined();
     expect(normalBtn.text).toContain('🟢');
   });
+
+  it('should correctly escape markdown special characters and handle fallback safely', async () => {
+    const { escapeMarkdown, safeReplyWithMarkdown } = await import('../telegram/utils/safeMarkdown.js');
+
+    // 1. escapeMarkdown
+    expect(escapeMarkdown('user_name_123@gmail.com')).toBe('user\\_name\\_123@gmail.com');
+    expect(escapeMarkdown('[acc_01]')).toBe('\\[acc\\_01\\]');
+    expect(escapeMarkdown('Reason: limit_reached *bold*')).toBe('Reason: limit\\_reached \\*bold\\*');
+    expect(escapeMarkdown('')).toBe('');
+    expect(escapeMarkdown(null)).toBe('');
+
+    // 2. safeReplyWithMarkdown normal case
+    let calledReplyWithMarkdown = false;
+    let calledReply = false;
+    const mockCtxSuccess = {
+      replyWithMarkdown: async (text, extra) => {
+        calledReplyWithMarkdown = true;
+        return { message_id: 1, text };
+      },
+      reply: async (text, extra) => {
+        calledReply = true;
+        return { message_id: 2, text };
+      }
+    };
+
+    await safeReplyWithMarkdown(mockCtxSuccess, 'Normal *bold* text');
+    expect(calledReplyWithMarkdown).toBe(true);
+    expect(calledReply).toBe(false);
+
+    // 3. safeReplyWithMarkdown fallback case on entity parsing error
+    const mockCtxError = {
+      replyWithMarkdown: async () => {
+        throw new Error("400: Bad Request: can't parse entities: Can't find end of the entity");
+      },
+      reply: async (plainText, extra) => {
+        calledReply = true;
+        return { message_id: 3, text: plainText };
+      }
+    };
+
+    calledReplyWithMarkdown = false;
+    calledReply = false;
+    const res = await safeReplyWithMarkdown(mockCtxError, 'Broken *markdown_text');
+    expect(calledReply).toBe(true);
+    expect(res.text).toBe('Broken markdowntext');
+  });
 });
+
