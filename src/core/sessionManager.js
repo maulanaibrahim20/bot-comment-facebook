@@ -317,9 +317,11 @@ export class SessionManager {
           lastLogTime = Date.now();
         }
 
-        // Cek jika ada layar 2FA / Checkpoint
+        // Cek jika ada layar 2FA / Checkpoint / Two-Step Verification
         const is2FA = page.url().includes('checkpoint') || 
-          await page.locator('input[name="approvals_code"], input[id="approvals_code"], input[placeholder*="Code"], input[placeholder*="Kode"]').first().isVisible().catch(() => false);
+          page.url().includes('twostepverification') ||
+          page.url().includes('two_step_verification') ||
+          await page.locator('input[name="approvals_code"], input[id="approvals_code"], input[placeholder*="Code" i], input[placeholder*="Kode" i], input[autocomplete="one-time-code"]').first().isVisible().catch(() => false);
 
         // Kirim screenshot checkpoint sekali ke Telegram agar user bisa melihat langsung
         if (is2FA && !hasSentCheckpointScreenshot) {
@@ -341,13 +343,13 @@ export class SessionManager {
           const manualOtp = options.getManualOtp(account.id);
           if (manualOtp) {
             logger.account(account.id, `Memasukkan kode OTP manual (${manualOtp})...`);
-            const otpInput = page.locator('input[name="approvals_code"], input[id="approvals_code"], input[type="number"], input[type="text"]').first();
+            const otpInput = page.locator('input[name="approvals_code"], input[id="approvals_code"], input[name*="code" i], input[autocomplete="one-time-code"], input[placeholder*="Code" i], input[placeholder*="Kode" i], input[type="number"], input[type="text"]').first();
             if (await otpInput.isVisible().catch(() => false)) {
               await otpInput.click({ force: true });
               await typeHumanLike(page, otpInput, manualOtp);
               await randomDelay(800, 1500);
 
-              const submitOtpBtn = page.locator('button[type="submit"], button#checkpointSubmitButton, button:has-text("Continue"), button:has-text("Lanjutkan")').first();
+              const submitOtpBtn = page.locator('button[type="submit"], button#checkpointSubmitButton, button:has-text("Continue"), button:has-text("Lanjutkan"), button:has-text("Kirim"), button:has-text("Konfirmasi"), button:has-text("Confirm")').first();
               if (await submitOtpBtn.isVisible().catch(() => false)) {
                 await submitOtpBtn.click({ force: true });
               } else {
@@ -362,13 +364,13 @@ export class SessionManager {
           const otpCode = generate2FACode(account.twoFactorSecret);
           if (otpCode) {
             logger.account(account.id, `Memasukkan kode 2FA otomatis (${otpCode})...`);
-            const otpInput = page.locator('input[name="approvals_code"], input[id="approvals_code"], input[type="number"], input[type="text"]').first();
+            const otpInput = page.locator('input[name="approvals_code"], input[id="approvals_code"], input[name*="code" i], input[autocomplete="one-time-code"], input[placeholder*="Code" i], input[placeholder*="Kode" i], input[type="number"], input[type="text"]').first();
             if (await otpInput.isVisible().catch(() => false)) {
               await otpInput.click({ force: true });
               await typeHumanLike(page, otpInput, otpCode);
               await randomDelay(800, 1500);
 
-              const submitOtpBtn = page.locator('button[type="submit"], button#checkpointSubmitButton, button:has-text("Continue"), button:has-text("Lanjutkan")').first();
+              const submitOtpBtn = page.locator('button[type="submit"], button#checkpointSubmitButton, button:has-text("Continue"), button:has-text("Lanjutkan"), button:has-text("Kirim"), button:has-text("Konfirmasi"), button:has-text("Confirm")').first();
               if (await submitOtpBtn.isVisible().catch(() => false)) {
                 await submitOtpBtn.click({ force: true });
               } else {

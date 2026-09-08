@@ -12,9 +12,11 @@ import { safeReplyWithMarkdown, escapeMarkdown } from "../utils/safeMarkdown.js"
 export function buildVerificationKeyboard(accountId, currentUrl) {
   const inlineButtons = [];
 
+  const isEncrypted2FA = currentUrl && (currentUrl.includes("encryptedcontext") || currentUrl.includes("twostepverification"));
   const isSpecificUrl = currentUrl && 
     !currentUrl.endsWith("facebook.com/") && 
-    !currentUrl.endsWith("facebook.com");
+    !currentUrl.endsWith("facebook.com") &&
+    !isEncrypted2FA;
 
   if (isSpecificUrl && (currentUrl.startsWith("http://") || currentUrl.startsWith("https://"))) {
     inlineButtons.push([
@@ -75,27 +77,36 @@ export async function executeLoginAccounts(ctx, targetId = "all", options = {}) 
 
       const onProgress = async (type, data) => {
         try {
-          if (type === "WAITING_APPROVAL") {
+          if (type === "WAITING_APPROVAL" || type === "CHECKPOINT_SCREENSHOT") {
             waitingOtpAccounts.add(data.accountId);
+            const isEncrypted2FA = data.currentUrl && (data.currentUrl.includes("encryptedcontext") || data.currentUrl.includes("twostepverification"));
             const isSpecificUrl = data.currentUrl && 
               !data.currentUrl.endsWith("facebook.com/") && 
-              !data.currentUrl.endsWith("facebook.com");
+              !data.currentUrl.endsWith("facebook.com") &&
+              !isEncrypted2FA;
 
-            const urlText = isSpecificUrl
-              ? `🔗 *Link Verifikasi Khusus:*\n${data.currentUrl}\n\n`
-              : `🔔 *Buka Notifikasi di HP Anda:*\nhttps://www.facebook.com/notifications\n\n`;
+            let urlText = "";
+            if (isEncrypted2FA) {
+              urlText = `🔐 *Status:* Halaman Autentikasi 2 Langkah (2FA) Terbuka di Server\n` +
+                `_(Tautan ini terenkripsi sesi browser server dan tidak bisa dibuka langsung dari HP/PC lain)_\n\n`;
+            } else if (isSpecificUrl) {
+              urlText = `🔗 *Link Verifikasi Khusus:*\n${data.currentUrl}\n\n`;
+            } else {
+              urlText = `🔔 *Buka Notifikasi di HP Anda:*\nhttps://www.facebook.com/notifications\n\n`;
+            }
+
+            const stepInstructions = `👉 *Cara Menyelesaikan:*\n` +
+              `1. **Ketik Kode OTP 6-Digit**: Cek aplikasi Authenticator / SMS di HP Anda, lalu *langsung balas chat ini dengan angka OTP* (contoh: \`123456\`). Bot akan langsung mengetikkannya ke layar login!\n` +
+              `2. **Atau Setujui di HP**: Buka aplikasi Facebook di HP Anda (Tab Notifikasi 🔔), lalu ketuk pemberitahuan masuk dan pilih *"Ya, ini saya" (Approve)*.\n` +
+              (isSpecificUrl ? `3. Atau buka tautan verifikasi khusus di atas melalui browser HP Anda.\n` : "") +
+              `\n⏳ Tersisa waktu tunggu: *${data.remainingSec}s*`;
 
             // Jika ada screenshot awal / verifikasi, kirimkan sebagai foto
             if (data.screenshotPath && fs.existsSync(data.screenshotPath)) {
-              const caption = `🔐 *[${escapeMarkdown(data.accountId)}] Verifikasi / Persetujuan Diperlukan!*\n\n` +
+              const caption = `🔐 *[${escapeMarkdown(data.accountId)}] Verifikasi / 2FA Diperlukan!*\n\n` +
                 `Akun: \`${acc.username}\`\n\n` +
                 urlText +
-                `👉 *Langkah Verifikasi:*\n` +
-                `1. Facebook meminta persetujuan login dari aplikasi di HP Anda.\n` +
-                `2. Buka aplikasi Facebook di HP Anda (Tab Notifikasi 🔔) atau klik tombol di bawah, lalu ketuk *"Ya, ini saya" (Approve)*.\n` +
-                (isSpecificUrl ? `3. Atau Anda dapat membuka Link Verifikasi Khusus di atas melalui browser HP.\n` : "") +
-                `4. Jika diminta kode OTP 6-digit, *langsung balas chat ini dengan angka OTP* (contoh: \`123456\`).\n\n` +
-                `⏳ Tersisa waktu tunggu: *${data.remainingSec}s*`;
+                stepInstructions;
 
               await ctx.replyWithPhoto(
                 { source: data.screenshotPath },
@@ -109,29 +120,11 @@ export async function executeLoginAccounts(ctx, targetId = "all", options = {}) 
               // Notifikasi status berkala setiap interval polling
               await safeReplyWithMarkdown(
                 ctx,
-                `⏳ *[${escapeMarkdown(data.accountId)}] Menunggu Persetujuan Login di HP...*\n\n` +
+                `⏳ *[${escapeMarkdown(data.accountId)}] Menunggu Persetujuan Login / Kode OTP...*\n\n` +
                 urlText +
                 `⏱️ Sisa waktu tunggu: *${data.remainingSec} detik*\n\n` +
-                `_Buka aplikasi Facebook di HP (Notifikasi 🔔) lalu ketuk "Ya, ini saya", atau ketik kode OTP di chat jika diminta._`,
+                `_Ketik angka kode OTP di chat ini, atau setujui notifikasi masuk di aplikasi HP Anda._`,
                 buildVerificationKeyboard(data.accountId, data.currentUrl)
-              );
-            }
-          } else if (type === "CHECKPOINT_SCREENSHOT") {
-            waitingOtpAccounts.add(data.accountId);
-            if (fs.existsSync(data.screenshotPath)) {
-              const caption = `⚠️ *[${escapeMarkdown(data.accountId)}] Layar Checkpoint / 2FA Terdeteksi!*\n\n` +
-                `🔗 *Link Verifikasi:* ${data.currentUrl || "https://www.facebook.com/"}\n\n` +
-                `1. Anda dapat membuka link di atas melalui browser HP untuk verifikasi.\n` +
-                `2. Jika diminta kode OTP 6-digit, *langsung ketik angka kode OTP di chat ini* (contoh: \`123456\`).\n\n` +
-                `⏳ Tersisa waktu tunggu: *${data.remainingSec || 60}s*`;
-
-              await ctx.replyWithPhoto(
-                { source: data.screenshotPath },
-                {
-                  caption,
-                  parse_mode: "Markdown",
-                  ...buildVerificationKeyboard(data.accountId, data.currentUrl)
-                }
               );
             }
           }
