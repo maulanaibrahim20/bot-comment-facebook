@@ -601,25 +601,30 @@ export class SessionManager {
         return false;
       }
 
-      // Ambil elemen tile (bisa berbentuk td.rc-imageselect-tile atau wrapper)
-      const tiles = frame.locator('td.rc-imageselect-tile, .rc-imageselect-tile, .rc-image-tile-wrapper');
-      const count = await tiles.count();
-      logger.info(`[${accountId}] Ditemukan ${count} tile gambar di reCAPTCHA challenge.`);
+      // Hanya ambil elemen <td> sel tabel utama (persis 9 kotak: 3 baris x 3 kolom)
+      let tiles = frame.locator('td.rc-imageselect-tile');
+      let count = await tiles.count();
+
+      // Fallback jika class rc-imageselect-tile berbeda
+      if (count === 0) {
+        tiles = frame.locator('table[class*="rc-imageselect-table"] td');
+        count = await tiles.count();
+      }
+
+      logger.info(`[${accountId}] Ditemukan ${count} sel kotak gambar di reCAPTCHA challenge.`);
 
       if (count >= tileNumber && tileNumber >= 1) {
         const targetTile = tiles.nth(tileNumber - 1);
-        const clickTarget = targetTile.locator('.rc-image-tile-target, img, .rc-image-tile-wrapper').first();
-        if (await clickTarget.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await clickTarget.click({ force: true });
-        } else {
-          await targetTile.click({ force: true });
-        }
-        logger.info(`[${accountId}] Berhasil klik tile nomor ${tileNumber}.`);
-        // Beri jeda agar animasi fading image baru dari Google sempat selesai
-        await randomDelay(1500, 2500);
+        
+        // Klik langsung pada kotak target (Playwright mengklik titik tengah kotak secara presisi)
+        await targetTile.click({ force: true });
+        logger.info(`[${accountId}] Berhasil klik kotak nomor ${tileNumber}.`);
+
+        // Beri jeda agar animasi fading / gambar baru sempat termuat
+        await randomDelay(1800, 2500);
         return true;
       } else {
-        logger.warn(`[${accountId}] Nomor tile ${tileNumber} di luar rentang (Total tile: ${count}).`);
+        logger.warn(`[${accountId}] Nomor kotak ${tileNumber} di luar rentang (Total kotak: ${count}).`);
       }
     } catch (err) {
       logger.warn(`[${accountId}] Gagal klik tile reCAPTCHA ${tileNumber}: ${err.message}`);
