@@ -555,10 +555,22 @@ export class SessionManager {
   static getRecaptchaChallengeFrame(page) {
     if (!page || page.isClosed()) return null;
     const frames = page.frames();
-    return frames.find(f => {
+
+    // 1. Cari frame yang secara spesifik memiliki 'bframe' di URL
+    const bframe = frames.find(f => {
       const url = f.url();
-      return url.includes('recaptcha') && (url.includes('bframe') || url.includes('enterprise'));
-    }) || null;
+      return url.includes('bframe');
+    });
+    if (bframe) return bframe;
+
+    // 2. Jika tidak ada 'bframe', cari frame recaptcha yang BUKAN frame anchor (checkbox)
+    for (const f of frames) {
+      const url = f.url();
+      if ((url.includes('google.com/recaptcha') || url.includes('recaptcha')) && !url.includes('anchor')) {
+        return f;
+      }
+    }
+    return null;
   }
 
   /**
@@ -569,7 +581,7 @@ export class SessionManager {
     try {
       const frame = SessionManager.getRecaptchaChallengeFrame(page);
       if (!frame) return false;
-      const verifyBtn = frame.locator('#recaptcha-verify-button');
+      const verifyBtn = frame.locator('#recaptcha-verify-button, button:has-text("VERIFIKASI"), button:has-text("VERIFY")').first();
       return await verifyBtn.isVisible({ timeout: 1000 }).catch(() => false);
     } catch {
       return false;
@@ -584,14 +596,30 @@ export class SessionManager {
     if (!page || page.isClosed()) return false;
     try {
       const frame = SessionManager.getRecaptchaChallengeFrame(page);
-      if (!frame) return false;
+      if (!frame) {
+        logger.warn(`[${accountId}] Frame puzzle reCAPTCHA (bframe) tidak ditemukan.`);
+        return false;
+      }
 
+      // Ambil elemen tile (bisa berbentuk td.rc-imageselect-tile atau wrapper)
       const tiles = frame.locator('td.rc-imageselect-tile, .rc-imageselect-tile, .rc-image-tile-wrapper');
       const count = await tiles.count();
+      logger.info(`[${accountId}] Ditemukan ${count} tile gambar di reCAPTCHA challenge.`);
+
       if (count >= tileNumber && tileNumber >= 1) {
-        await tiles.nth(tileNumber - 1).click({ force: true });
-        await randomDelay(500, 1000);
+        const targetTile = tiles.nth(tileNumber - 1);
+        const clickTarget = targetTile.locator('.rc-image-tile-target, img, .rc-image-tile-wrapper').first();
+        if (await clickTarget.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await clickTarget.click({ force: true });
+        } else {
+          await targetTile.click({ force: true });
+        }
+        logger.info(`[${accountId}] Berhasil klik tile nomor ${tileNumber}.`);
+        // Beri jeda agar animasi fading image baru dari Google sempat selesai
+        await randomDelay(1500, 2500);
         return true;
+      } else {
+        logger.warn(`[${accountId}] Nomor tile ${tileNumber} di luar rentang (Total tile: ${count}).`);
       }
     } catch (err) {
       logger.warn(`[${accountId}] Gagal klik tile reCAPTCHA ${tileNumber}: ${err.message}`);
@@ -607,12 +635,16 @@ export class SessionManager {
     if (!page || page.isClosed()) return false;
     try {
       const frame = SessionManager.getRecaptchaChallengeFrame(page);
-      if (!frame) return false;
+      if (!frame) {
+        logger.warn(`[${accountId}] Frame puzzle reCAPTCHA tidak ditemukan saat verifikasi.`);
+        return false;
+      }
 
       const verifyBtn = frame.locator('#recaptcha-verify-button, button:has-text("VERIFIKASI"), button:has-text("VERIFY")').first();
       if (await verifyBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
         await verifyBtn.click({ force: true });
-        await randomDelay(2500, 4000);
+        logger.info(`[${accountId}] Tombol VERIFIKASI reCAPTCHA ditekan.`);
+        await randomDelay(3000, 4500);
         return true;
       }
     } catch (err) {
@@ -634,7 +666,8 @@ export class SessionManager {
       const reloadBtn = frame.locator('#recaptcha-reload-button').first();
       if (await reloadBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
         await reloadBtn.click({ force: true });
-        await randomDelay(2000, 3000);
+        logger.info(`[${accountId}] Tombol Ganti Soal reCAPTCHA ditekan.`);
+        await randomDelay(2500, 3500);
         return true;
       }
     } catch (err) {
