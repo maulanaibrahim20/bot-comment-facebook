@@ -14,7 +14,7 @@ import { createAccountBrowserContext } from "../../browser.js";
 import { userStates, campaignState } from "../state.js";
 import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
 import { executeLoginAccounts, buildVerificationKeyboard } from "../services/loginService.js";
-import { safeReplyWithMarkdown, escapeMarkdown } from "../utils/safeMarkdown.js";
+import { safeReplyWithMarkdown, safeReplyWithPhoto, escapeMarkdown, formatDisplayUrl } from "../utils/safeMarkdown.js";
 
 export function registerAccountHandlers(bot) {
   bot.hears("👥 Daftar Akun Facebook", async (ctx) => {
@@ -144,12 +144,21 @@ export function registerAccountHandlers(bot) {
     await ctx.answerCbQuery("📸 Mengambil screenshot layar terbaru...");
     const res = await SessionManager.captureLoginScreenshot(accountId);
     if (res && res.screenshotPath && fs.existsSync(res.screenshotPath)) {
-      await ctx.replyWithPhoto(
+      const displayUrl = formatDisplayUrl(res.currentUrl);
+      const isEncrypted2FA = res.currentUrl && (res.currentUrl.includes("encryptedcontext") || res.currentUrl.includes("twostepverification"));
+
+      let statusNote = "";
+      if (isEncrypted2FA) {
+        statusNote = "\n\n🔐 *Status:* Layar 2FA Terbuka di Server.\n👉 _Silakan balas chat ini dengan 6-digit kode OTP Anda._";
+      }
+
+      await safeReplyWithPhoto(
+        ctx,
         { source: res.screenshotPath },
         {
-          caption: `📸 *[${accountId}] Layar Terkini Facebook*\n\n` +
-            `🔗 *URL:* ${res.currentUrl || "https://facebook.com"}\n` +
-            `🕒 _Diambil pada: ${new Date().toLocaleTimeString('id-ID')}_`,
+          caption: `📸 *[${escapeMarkdown(accountId)}] Layar Terkini Facebook*\n\n` +
+            `🔗 *Halaman:* \`${displayUrl}\`\n` +
+            `🕒 _Diambil: ${new Date().toLocaleTimeString('id-ID')}_${statusNote}`,
           parse_mode: "Markdown",
           ...buildVerificationKeyboard(accountId, res.currentUrl)
         }
@@ -538,8 +547,10 @@ export function registerAccountHandlers(bot) {
       await sleep(3000);
 
       const shotBuffer = await page.screenshot({ fullPage: false });
-      await ctx.replyWithPhoto({ source: shotBuffer }, {
-        caption: `🌐 *Tampilan Facebook Akun:* [${target.id}] (${target.username})\nURL: \`${page.url()}\``
+      const displayUrl = formatDisplayUrl(page.url());
+      await safeReplyWithPhoto(ctx, { source: shotBuffer }, {
+        caption: `🌐 *Tampilan Facebook Akun:* [${escapeMarkdown(target.id)}] (\`${target.username}\`)\nURL: \`${displayUrl}\``,
+        parse_mode: "Markdown"
       });
 
       // Beri jeda 30 detik agar user bisa melihat jika di depan PC
