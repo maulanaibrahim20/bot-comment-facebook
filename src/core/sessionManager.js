@@ -548,4 +548,98 @@ export class SessionManager {
     }
     return false;
   }
+
+  /**
+   * Mendapatkan frame tantangan reCAPTCHA (bframe yang berisi puzzle gambar)
+   */
+  static getRecaptchaChallengeFrame(page) {
+    if (!page || page.isClosed()) return null;
+    const frames = page.frames();
+    return frames.find(f => {
+      const url = f.url();
+      return url.includes('recaptcha') && (url.includes('bframe') || url.includes('enterprise'));
+    }) || null;
+  }
+
+  /**
+   * Mengecek apakah ada tantangan puzzle gambar reCAPTCHA yang sedang terbuka
+   */
+  static async isRecaptchaChallengeVisible(page) {
+    if (!page || page.isClosed()) return false;
+    try {
+      const frame = SessionManager.getRecaptchaChallengeFrame(page);
+      if (!frame) return false;
+      const verifyBtn = frame.locator('#recaptcha-verify-button');
+      return await verifyBtn.isVisible({ timeout: 1000 }).catch(() => false);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Mengklik tile nomor 1-9 pada puzzle gambar reCAPTCHA (1-indexed, dari kiri ke kanan, atas ke bawah)
+   */
+  static async clickRecaptchaTile(accountId, tileNumber) {
+    const page = activeLoginSessions.get(accountId);
+    if (!page || page.isClosed()) return false;
+    try {
+      const frame = SessionManager.getRecaptchaChallengeFrame(page);
+      if (!frame) return false;
+
+      const tiles = frame.locator('td.rc-imageselect-tile, .rc-imageselect-tile, .rc-image-tile-wrapper');
+      const count = await tiles.count();
+      if (count >= tileNumber && tileNumber >= 1) {
+        await tiles.nth(tileNumber - 1).click({ force: true });
+        await randomDelay(500, 1000);
+        return true;
+      }
+    } catch (err) {
+      logger.warn(`[${accountId}] Gagal klik tile reCAPTCHA ${tileNumber}: ${err.message}`);
+    }
+    return false;
+  }
+
+  /**
+   * Menekan tombol VERIFIKASI pada puzzle reCAPTCHA
+   */
+  static async clickRecaptchaVerify(accountId) {
+    const page = activeLoginSessions.get(accountId);
+    if (!page || page.isClosed()) return false;
+    try {
+      const frame = SessionManager.getRecaptchaChallengeFrame(page);
+      if (!frame) return false;
+
+      const verifyBtn = frame.locator('#recaptcha-verify-button, button:has-text("VERIFIKASI"), button:has-text("VERIFY")').first();
+      if (await verifyBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await verifyBtn.click({ force: true });
+        await randomDelay(2500, 4000);
+        return true;
+      }
+    } catch (err) {
+      logger.warn(`[${accountId}] Gagal verifikasi reCAPTCHA: ${err.message}`);
+    }
+    return false;
+  }
+
+  /**
+   * Menekan tombol Reload / Ganti Soal pada puzzle reCAPTCHA
+   */
+  static async clickRecaptchaReload(accountId) {
+    const page = activeLoginSessions.get(accountId);
+    if (!page || page.isClosed()) return false;
+    try {
+      const frame = SessionManager.getRecaptchaChallengeFrame(page);
+      if (!frame) return false;
+
+      const reloadBtn = frame.locator('#recaptcha-reload-button').first();
+      if (await reloadBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await reloadBtn.click({ force: true });
+        await randomDelay(2000, 3000);
+        return true;
+      }
+    } catch (err) {
+      logger.warn(`[${accountId}] Gagal reload reCAPTCHA: ${err.message}`);
+    }
+    return false;
+  }
 }

@@ -26,15 +26,50 @@ export function buildVerificationKeyboard(accountId, currentUrl) {
 
   inlineButtons.push([
     Markup.button.callback("🤖 Klik 'Saya Bukan Robot'", `CLICK_RECAPTCHA_${accountId}`),
-    Markup.button.callback("📸 Cek Layar Terkini", `SCREENSHOT_${accountId}`)
+    Markup.button.callback("🧩 Papan Puzzle (1-9)", `OPEN_CAPTCHA_PAD_${accountId}`)
   ]);
 
   inlineButtons.push([
     Markup.button.url("🔔 Buka Notifikasi Facebook (Approve di HP)", "https://www.facebook.com/notifications"),
+    Markup.button.callback("📸 Cek Layar Terkini", `SCREENSHOT_${accountId}`)
+  ]);
+
+  inlineButtons.push([
     Markup.button.callback("🛑 Batalkan Login", `CANCEL_LOGIN_${accountId}`)
   ]);
 
   return Markup.inlineKeyboard(inlineButtons);
+}
+
+/**
+ * Papan keypad 3x3 untuk memecahkan puzzle gambar Google reCAPTCHA dari Telegram
+ */
+export function buildRecaptchaGridKeyboard(accountId) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("1️⃣", `CAPTCHA_TILE_${accountId}_1`),
+      Markup.button.callback("2️⃣", `CAPTCHA_TILE_${accountId}_2`),
+      Markup.button.callback("3️⃣", `CAPTCHA_TILE_${accountId}_3`)
+    ],
+    [
+      Markup.button.callback("4️⃣", `CAPTCHA_TILE_${accountId}_4`),
+      Markup.button.callback("5️⃣", `CAPTCHA_TILE_${accountId}_5`),
+      Markup.button.callback("6️⃣", `CAPTCHA_TILE_${accountId}_6`)
+    ],
+    [
+      Markup.button.callback("7️⃣", `CAPTCHA_TILE_${accountId}_7`),
+      Markup.button.callback("8️⃣", `CAPTCHA_TILE_${accountId}_8`),
+      Markup.button.callback("9️⃣", `CAPTCHA_TILE_${accountId}_9`)
+    ],
+    [
+      Markup.button.callback("🔄 Ganti Soal", `CAPTCHA_RELOAD_${accountId}`),
+      Markup.button.callback("✅ Verifikasi", `CAPTCHA_VERIFY_${accountId}`)
+    ],
+    [
+      Markup.button.callback("📸 Cek Layar Terkini", `SCREENSHOT_${accountId}`),
+      Markup.button.callback("🛑 Batalkan Login", `CANCEL_LOGIN_${accountId}`)
+    ]
+  ]);
 }
 
 export async function executeLoginAccounts(ctx, targetId = "all", options = {}) {

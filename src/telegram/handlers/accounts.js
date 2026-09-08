@@ -13,7 +13,7 @@ import { ProfileSwitcher } from "../../core/profileSwitcher.js";
 import { createAccountBrowserContext } from "../../browser.js";
 import { userStates, campaignState } from "../state.js";
 import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
-import { executeLoginAccounts, buildVerificationKeyboard } from "../services/loginService.js";
+import { executeLoginAccounts, buildVerificationKeyboard, buildRecaptchaGridKeyboard } from "../services/loginService.js";
 import { safeReplyWithMarkdown, safeReplyWithPhoto, escapeMarkdown, formatDisplayUrl } from "../utils/safeMarkdown.js";
 
 export function registerAccountHandlers(bot) {
@@ -185,6 +185,90 @@ export function registerAccountHandlers(bot) {
       }
     } catch (err) {
       await ctx.reply(`⚠️ Gagal saat mencoba klik reCAPTCHA: ${err.message}`);
+    }
+  });
+
+  bot.action(/OPEN_CAPTCHA_PAD_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    await ctx.answerCbQuery("🧩 Membuka papan angka puzzle...");
+    const res = await SessionManager.captureLoginScreenshot(accountId);
+    if (res && res.screenshotPath && fs.existsSync(res.screenshotPath)) {
+      await safeReplyWithPhoto(
+        ctx,
+        { source: res.screenshotPath },
+        {
+          caption: `🧩 *[${escapeMarkdown(accountId)}] Papan Bantuan Puzzle reCAPTCHA (1-9)*\n\n` +
+            `Lihat susunan kotak gambar 3x3 pada gambar di atas:\n` +
+            `• Baris Atas: 1️⃣, 2️⃣, 3️⃣\n` +
+            `• Baris Tengah: 4️⃣, 5️⃣, 6️⃣\n` +
+            `• Baris Bawah: 7️⃣, 8️⃣, 9️⃣\n\n` +
+            `_Ketuk angka kotak yang ada objek yang diminta (misal Mobil), lalu ketuk [✅ Verifikasi]._`,
+          parse_mode: "Markdown",
+          ...buildRecaptchaGridKeyboard(accountId)
+        }
+      );
+    } else {
+      await ctx.reply(`⚠️ Browser untuk [${accountId}] sudah tidak aktif atau selesai.`);
+    }
+  });
+
+  bot.action(/CAPTCHA_TILE_(.+)_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    const tileNum = parseInt(ctx.match[2], 10);
+    await ctx.answerCbQuery(`Mengetuk kotak nomor ${tileNum}...`);
+    
+    await SessionManager.clickRecaptchaTile(accountId, tileNum);
+    const res = await SessionManager.captureLoginScreenshot(accountId);
+    if (res && res.screenshotPath && fs.existsSync(res.screenshotPath)) {
+      await safeReplyWithPhoto(
+        ctx,
+        { source: res.screenshotPath },
+        {
+          caption: `🎯 *[${escapeMarkdown(accountId)}] Kotak ${tileNum} diklik!*\n` +
+            `_Pilih kotak lain jika masih ada, atau ketuk [✅ Verifikasi] jika objek sudah habis._`,
+          parse_mode: "Markdown",
+          ...buildRecaptchaGridKeyboard(accountId)
+        }
+      );
+    }
+  });
+
+  bot.action(/CAPTCHA_VERIFY_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    await ctx.answerCbQuery("Mengirim verifikasi...");
+    await SessionManager.clickRecaptchaVerify(accountId);
+    
+    const res = await SessionManager.captureLoginScreenshot(accountId);
+    if (res && res.screenshotPath && fs.existsSync(res.screenshotPath)) {
+      await safeReplyWithPhoto(
+        ctx,
+        { source: res.screenshotPath },
+        {
+          caption: `🔎 *[${escapeMarkdown(accountId)}] Hasil Verifikasi:*\n` +
+            `_Jika muncul gambar baru, pilih lagi kotaknya. Jika centang hijau sudah didapat, bot akan otomatis masuk._`,
+          parse_mode: "Markdown",
+          ...buildRecaptchaGridKeyboard(accountId)
+        }
+      );
+    }
+  });
+
+  bot.action(/CAPTCHA_RELOAD_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    await ctx.answerCbQuery("Meminta soal gambar baru...");
+    await SessionManager.clickRecaptchaReload(accountId);
+
+    const res = await SessionManager.captureLoginScreenshot(accountId);
+    if (res && res.screenshotPath && fs.existsSync(res.screenshotPath)) {
+      await safeReplyWithPhoto(
+        ctx,
+        { source: res.screenshotPath },
+        {
+          caption: `🔄 *[${escapeMarkdown(accountId)}] Soal gambar baru dimuat.*\n_Silakan pilih kotak yang sesuai._`,
+          parse_mode: "Markdown",
+          ...buildRecaptchaGridKeyboard(accountId)
+        }
+      );
     }
   });
 
