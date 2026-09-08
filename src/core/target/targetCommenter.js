@@ -16,6 +16,11 @@ export class TargetCommenter {
    * Menjalankan aksi komentar untuk 1 akun pada 1 target postingan spesifik (URL)
    */
   static async postComment(account, target, options = {}) {
+    if (account.isLimited) {
+      logger.warn(`🛑 [${account.id}] Akun sedang terkena LIMIT KOMENTAR Facebook (${account.limitReason || 'Limit Facebook'}). Dilewati otomatis.`);
+      return { success: false, reason: 'ACTION_BLOCKED', error: account.limitReason || 'Akun sedang terkena limit komentar' };
+    }
+
     const settings = await getSettings();
     const commentText = parseSpintax(target.commentTemplate);
     logger.account(account.id, `Mempersiapkan komentar target: "${commentText}"`);
@@ -86,17 +91,21 @@ export class TargetCommenter {
    */
   static async runCampaign(accounts, targets, options = {}) {
     const settings = await getSettings();
-    const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
+    const activeAccounts = accounts.filter((acc) => acc.enabled !== false && !acc.isLimited);
+    const limitedAccounts = accounts.filter((acc) => acc.enabled !== false && acc.isLimited);
+    if (limitedAccounts.length > 0) {
+      logger.warn(`ℹ️ ${limitedAccounts.length} akun terdeteksi sedang LIMIT KOMENTAR (${limitedAccounts.map(a => `[${a.id}]`).join(', ')}) dan otomatis dilewati.`);
+    }
     const targetsList = Array.isArray(targets) ? targets : [targets];
     const activeTargets = targetsList.filter((t) => t.active !== false);
     const concurrency = options.concurrency || 1;
 
     if (activeAccounts.length === 0 || activeTargets.length === 0) {
-      logger.warn('Tidak ada akun atau target aktif yang ditemukan.');
+      logger.warn('Tidak ada akun atau target aktif yang dapat digunakan.');
       return;
     }
 
-    logger.info(`🚀 Memulai kampanye komentar (${activeAccounts.length} akun ke ${activeTargets.length} target, Concurrency: ${concurrency})...`);
+    logger.info(`🚀 Memulai kampanye komentar (${activeAccounts.length} akun aktif ke ${activeTargets.length} target, Concurrency: ${concurrency})...`);
     const results = [];
 
     for (const target of activeTargets) {

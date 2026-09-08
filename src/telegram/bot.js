@@ -7,7 +7,14 @@ import { logger } from "../utils/logger.js";
 const BOT_TOKEN = getBotToken();
 validateBotToken(BOT_TOKEN);
 
-export const bot = new Telegraf(BOT_TOKEN || "dummy_token");
+export const bot = new Telegraf(BOT_TOKEN || "dummy_token", {
+  handlerTimeout: 9_000_000
+});
+
+// Tangani error update Telegram agar proses bot tidak crash
+bot.catch((err, ctx) => {
+  logger.warn(`[Telegram Error] Terjadi error pada update ${ctx?.updateType || 'unknown'}: ${err.message}`);
+});
 
 // Middleware Keamanan: Pastikan hanya pemilik bot yang bisa mengakses
 bot.use(authMiddleware);

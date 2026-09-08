@@ -357,6 +357,24 @@ export class ReelsCommenter {
     const onProgress =
       typeof options.onProgress === "function" ? options.onProgress : null;
 
+    if (account.isLimited) {
+      logger.warn(
+        `🛑 [${account.id}] Akun sedang terkena LIMIT KOMENTAR Facebook (${account.limitReason || "Limit Facebook"}). Dilewati otomatis demi keamanan.`,
+      );
+      if (onProgress)
+        await onProgress("ACCOUNT_LIMITED_SKIPPED", {
+          accountId: account.id,
+          reason: account.limitReason || "Limit komentar Facebook",
+        });
+      return {
+        success: false,
+        isBlocked: true,
+        reason: "ACCOUNT_IS_LIMITED",
+        blockedReason: account.limitReason || "Akun sedang dalam status limit komentar",
+        totalCommented: 0,
+      };
+    }
+
     logger.account(
       account.id,
       `Membuka Facebook Reels untuk menonton & mengomentari (Target: ${targetCountText})...`,
@@ -850,11 +868,15 @@ export class ReelsCommenter {
    */
   static async runRandomReelsCampaign(accounts, options = {}) {
     const settings = await getSettings();
-    const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
+    const activeAccounts = accounts.filter((acc) => acc.enabled !== false && !acc.isLimited);
+    const limitedAccounts = accounts.filter((acc) => acc.enabled !== false && acc.isLimited);
+    if (limitedAccounts.length > 0) {
+      logger.warn(`ℹ️ ${limitedAccounts.length} akun terdeteksi sedang LIMIT KOMENTAR (${limitedAccounts.map(a => `[${a.id}]`).join(', ')}) dan otomatis dilewati.`);
+    }
     const concurrency = options.concurrency || 1;
 
     logger.info(
-      `🎬 Memulai kampanye komentar Facebook REELS (${activeAccounts.length} akun, Concurrency: ${concurrency})...`,
+      `🎬 Memulai kampanye komentar Facebook REELS (${activeAccounts.length} akun aktif, Concurrency: ${concurrency})...`,
     );
     const allResults = [];
     let currentIndex = 0;

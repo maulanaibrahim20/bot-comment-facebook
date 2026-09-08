@@ -7,6 +7,8 @@ import { logger } from '../utils/logger.js';
 import { randomDelay, sleep, typeHumanLike } from '../utils/delay.js';
 import { generate2FACode } from '../utils/twoFactor.js';
 
+export const activeLoginSessions = new Map();
+
 export class SessionManager {
   /**
    * Cek apakah akun BENAR-BENAR dalam status login aktif di Facebook (bukan di layar Checkpoint / Verifikasi)
@@ -161,6 +163,7 @@ export class SessionManager {
     }
 
     const { context, page, close, sessionPath } = browserInstance;
+    activeLoginSessions.set(account.id, page);
 
     try {
       await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -189,6 +192,7 @@ export class SessionManager {
       // 2. Cek apakah sudah login dari Persistent Profile
       if (await SessionManager.checkIsLoggedIn(context, page)) {
         logger.success(`[${account.id}] Akun sudah terverifikasi dalam keadaan Login!`);
+        activeLoginSessions.delete(account.id);
         await close();
         return { success: true };
       }
@@ -250,6 +254,9 @@ export class SessionManager {
 `));
       }
 
+      // Beri jeda agar Facebook memproses autentikasi (3-4 detik)
+      await randomDelay(3000, 4500);
+
       // 6. Loop Pemantauan Persetujuan Login (Polling c_user & Checkpoint Removal)
       logger.account(account.id, 'Memantau status login (menunggu persetujuan HP / 2FA)...');
       let isSuccess = false;
@@ -257,7 +264,25 @@ export class SessionManager {
       const startTime = Date.now();
       let lastLogTime = 0;
 
-      while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
+      // Cek apakah langsung login berhasil atau butuh verifikasi
+      if (await SessionManager.checkIsLoggedIn(context, page)) {
+        isSuccess = true;
+      } else {
+        // Ambil screenshot awal segera setelah submit form login (halaman checkpoint / verifikasi)
+        const initialScreenshot = path.join(paths.logsDir, `verification_${account.id}_${Date.now()}.png`);
+        await page.screenshot({ path: initialScreenshot }).catch(() => {});
+        if (options.onProgress) {
+          await options.onProgress('WAITING_APPROVAL', {
+            accountId: account.id,
+            remainingSec: maxWaitSeconds,
+            currentUrl: page.url(),
+            screenshotPath: initialScreenshot,
+            isInitial: true
+          });
+        }
+      }
+
+      while (!isSuccess && (Date.now() - startTime) < maxWaitSeconds * 1000) {
         if (options.shouldStop && options.shouldStop()) {
           logger.info(`[${account.id}] Proses login dihentikan oleh pengguna.`);
           break;
@@ -270,7 +295,11 @@ export class SessionManager {
           const remainingSec = Math.round((maxWaitSeconds * 1000 - (Date.now() - startTime)) / 1000);
           logger.account(account.id, `Sedang menunggu persetujuan di HP... (Tersisa waktu tunggu: ${remainingSec}s)`);
           if (options.onProgress) {
-            await options.onProgress('WAITING_APPROVAL', { accountId: account.id, remainingSec });
+            await options.onProgress('WAITING_APPROVAL', {
+              accountId: account.id,
+              remainingSec,
+              currentUrl: page.url()
+            });
           }
           lastLogTime = Date.now();
         }
@@ -287,7 +316,9 @@ export class SessionManager {
           if (options.onProgress) {
             await options.onProgress('CHECKPOINT_SCREENSHOT', {
               accountId: account.id,
-              screenshotPath: checkpointScreenshot
+              screenshotPath: checkpointScreenshot,
+              currentUrl: page.url(),
+              remainingSec: Math.round((maxWaitSeconds * 1000 - (Date.now() - startTime)) / 1000)
             });
           }
         }
@@ -335,7 +366,6 @@ export class SessionManager {
           }
         }
 
-
         // Auto klik dialog "Lain Kali / Not Now / Simpan Info Login"
         const notNowButtons = [
           'div[role="button"]:has-text("Lain Kali")',
@@ -362,6 +392,8 @@ export class SessionManager {
         }
       }
 
+      activeLoginSessions.delete(account.id);
+
       if (isSuccess) {
         logger.success(`🎉 [${account.id}] Login BERHASIL! Beranda Facebook terdeteksi dan profil tersimpan persisten.`);
         await randomDelay(2000, 3000);
@@ -373,11 +405,41 @@ export class SessionManager {
         return { success: false, reason: 'TIMEOUT_OR_CHECKPOINT' };
       }
     } catch (err) {
+      activeLoginSessions.delete(account.id);
       logger.error(`[${account.id}] Gagal saat proses login:`, err);
       const errorScreenshotPath = path.join(paths.logsDir, `error_login_${account.id}_${Date.now()}.png`);
       await page.screenshot({ path: errorScreenshotPath }).catch(() => {});
       await close().catch(() => {});
       return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Mengambil screenshot layar browser yang sedang aktif saat login (on-demand)
+   */
+  static async captureLoginScreenshot(accountId) {
+    const page = activeLoginSessions.get(accountId);
+    if (!page || page.isClosed()) return null;
+    try {
+      const screenshotPath = path.join(paths.logsDir, `live_${accountId}_${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath });
+      return { screenshotPath, currentUrl: page.url() };
+    } catch (err) {
+      logger.warn(`Gagal capture live screenshot untuk [${accountId}]: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Mendapatkan URL aktif browser saat proses login
+   */
+  static getActiveLoginUrl(accountId) {
+    const page = activeLoginSessions.get(accountId);
+    if (!page || page.isClosed()) return null;
+    try {
+      return page.url();
+    } catch {
+      return null;
     }
   }
 

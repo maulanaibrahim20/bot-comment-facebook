@@ -1,3 +1,4 @@
+import fs from "fs";
 import { Markup } from "telegraf";
 import { 
   getAccounts, 
@@ -11,8 +12,8 @@ import { SessionManager } from "../../core/sessionManager.js";
 import { ProfileSwitcher } from "../../core/profileSwitcher.js";
 import { createAccountBrowserContext } from "../../browser.js";
 import { userStates, campaignState } from "../state.js";
-import { getRunningKeyboard } from "../keyboards.js";
-import { executeLoginAccounts } from "../services/loginService.js";
+import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
+import { executeLoginAccounts, buildVerificationKeyboard } from "../services/loginService.js";
 
 export function registerAccountHandlers(bot) {
   bot.hears("👥 Daftar Akun Facebook", async (ctx) => {
@@ -81,26 +82,31 @@ export function registerAccountHandlers(bot) {
     const accounts = await getAccounts();
     if (accounts.length === 0) return ctx.reply("Belum ada akun terdaftar.");
 
-    const buttons = accounts.map((acc) => {
+    const buttons = [];
+
+    if (accounts.length > 1) {
+      buttons.push([
+        Markup.button.callback("🚀 Login SEMUA Akun Sekaligus (Paralel)", "LOGIN_all")
+      ]);
+    }
+
+    accounts.forEach((acc) => {
       const hasSession = hasAccountSession(acc.id);
       const sessionEmoji = hasSession ? "✅" : "🔑";
-      return [
+      buttons.push([
         Markup.button.callback(
           `${sessionEmoji} Login [${acc.id}] (${acc.username})`,
           `LOGIN_${acc.id}`
         )
-      ];
+      ]);
     });
 
-    if (accounts.length > 1) {
-      buttons.push([
-        Markup.button.callback("🔑 Login Semua Akun Sekaligus", "LOGIN_all")
-      ]);
-    }
+    buttons.push([Markup.button.callback("🔙 Batalkan", "CANCEL_ACCOUNT_ACTION")]);
 
     await ctx.replyWithMarkdown(
       `🔑 *Pilih Akun yang Ingin di-Login:*\n\n` +
-        `_Silakan pilih akun yang ingin Anda login-kan satu per satu:_`,
+        `• Pilih *'🚀 Login SEMUA Akun Sekaligus (Paralel)'* untuk membuka browser semua akun secara bersamaan.\n` +
+        `• Atau pilih salah satu akun di bawah jika hanya ingin login akun tertentu:`,
       Markup.inlineKeyboard(buttons)
     );
   });
@@ -108,7 +114,66 @@ export function registerAccountHandlers(bot) {
   bot.action(/LOGIN_(.+)/, async (ctx) => {
     const targetId = ctx.match[1];
     await ctx.answerCbQuery();
-    executeLoginAccounts(ctx, targetId);
+
+    await ctx.replyWithMarkdown(
+      `🖥️ *Pilih Tampilan Browser untuk Login [${targetId}]:*\n\n` +
+      `• *🖥️ Buka Jendela Browser di PC (Visual)*:\n` +
+      `  Jendela browser Chrome akan muncul langsung di layar komputer Anda. Sangat disarankan jika ada verifikasi CAPTCHA, video selfie, atau konfirmasi tombol persetujuan di layar.\n\n` +
+      `• *🕶️ Latar Belakang (Headless)*:\n` +
+      `  Browser berjalan di background tanpa membuka jendela di PC. Tautan verifikasi, screenshot, dan kode OTP dikontrol via Telegram.`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("🖥️ Buka Jendela Browser di PC (Visual)", `LOGINEXEC_${targetId}_visual`)
+        ],
+        [
+          Markup.button.callback("🕶️ Latar Belakang (Headless)", `LOGINEXEC_${targetId}_headless`)
+        ],
+        [
+          Markup.button.callback("🔙 Batal", "CANCEL_LOGIN_PROMPT")
+        ]
+      ])
+    );
+  });
+
+  bot.action(/LOGINEXEC_(.+)_(visual|headless)/, async (ctx) => {
+    const targetId = ctx.match[1];
+    const mode = ctx.match[2];
+    await ctx.answerCbQuery();
+    const isHeadless = mode === "headless";
+    executeLoginAccounts(ctx, targetId, { headless: isHeadless });
+  });
+
+  bot.action("CANCEL_LOGIN_PROMPT", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply("❌ Pemilihan login dibatalkan.", getMainKeyboard());
+  });
+
+  bot.action(/SCREENSHOT_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    await ctx.answerCbQuery("📸 Mengambil screenshot layar terbaru...");
+    const res = await SessionManager.captureLoginScreenshot(accountId);
+    if (res && res.screenshotPath && fs.existsSync(res.screenshotPath)) {
+      await ctx.replyWithPhoto(
+        { source: res.screenshotPath },
+        {
+          caption: `📸 *[${accountId}] Layar Terkini Facebook*\n\n` +
+            `🔗 *URL:* ${res.currentUrl || "https://facebook.com"}\n` +
+            `🕒 _Diambil pada: ${new Date().toLocaleTimeString('id-ID')}_`,
+          parse_mode: "Markdown",
+          ...buildVerificationKeyboard(accountId, res.currentUrl)
+        }
+      );
+    } else {
+      await ctx.reply(`⚠️ Tidak dapat mengambil screenshot untuk [${accountId}]. Kemungkinan browser sudah selesai atau sesi login telah tertutup.`);
+    }
+  });
+
+  bot.action(/CANCEL_LOGIN_(.+)/, async (ctx) => {
+    const accountId = ctx.match[1];
+    await ctx.answerCbQuery("Membatalkan proses login...");
+    campaignState.isRunning = false;
+    userStates.delete(ctx.from.id);
+    await ctx.reply(`🛑 Proses login untuk [${accountId}] telah dibatalkan.`, getMainKeyboard());
   });
 
   bot.command("addaccount", async (ctx) => {
@@ -139,7 +204,20 @@ export function registerAccountHandlers(bot) {
     if (campaignState.isRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
     const parts = ctx.message.text.split(" ");
     const targetId = parts[1]?.trim() || "all";
-    executeLoginAccounts(ctx, targetId);
+    const modeArg = parts[2]?.trim()?.toLowerCase();
+
+    if (modeArg === "visual" || modeArg === "headless") {
+      executeLoginAccounts(ctx, targetId, { headless: modeArg === "headless" });
+    } else {
+      await ctx.replyWithMarkdown(
+        `🖥️ *Pilih Tampilan Browser untuk Login [${targetId}]:*`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("🖥️ Buka Jendela Browser di PC (Visual)", `LOGINEXEC_${targetId}_visual`)],
+          [Markup.button.callback("🕶️ Latar Belakang (Headless)", `LOGINEXEC_${targetId}_headless`)],
+          [Markup.button.callback("🔙 Batal", "CANCEL_LOGIN_PROMPT")]
+        ])
+      );
+    }
   });
 
   bot.hears("🩺 Cek Status Sesi", async (ctx) => {

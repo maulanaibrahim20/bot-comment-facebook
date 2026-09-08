@@ -650,6 +650,17 @@ async function handleRunRandomFeed() {
     return;
   }
 
+  const limitedAccounts = accounts.filter(a => a.isLimited);
+  const activeAccounts = accounts.filter(a => !a.isLimited && a.enabled !== false);
+  if (limitedAccounts.length > 0) {
+    console.log(chalk.yellow(`\n⚠️ Terdeteksi ${limitedAccounts.length} akun dalam status LIMIT KOMENTAR: ${limitedAccounts.map(a => chalk.red(`[${a.id}] ${a.username}`)).join(', ')}`));
+    console.log(chalk.gray(`   └ Akun ini otomatis dilewati dan tidak akan dibuka browser-nya demi keamanan.\n`));
+  }
+  if (activeAccounts.length === 0) {
+    logger.error('Semua akun aktif saat ini sedang terkena limit komentar Facebook. Silakan reset limit akun terlebih dahulu.');
+    return;
+  }
+
   const defaultOpts = await getDefaultCampaignOptions();
 
   // 1. Pilih Identitas Pengirim Komentar (Pertanyaan Pertama)
@@ -728,8 +739,8 @@ async function handleRunRandomFeed() {
     {
       type: 'number',
       name: 'concurrency',
-      message: `Berapa akun/browser yang berjalan bersamaan (Paralel)? (1 - ${accounts.length}):`,
-      default: Math.min(5, accounts.length)
+      message: `Berapa akun/browser yang berjalan bersamaan (Paralel)? (1 - ${activeAccounts.length}):`,
+      default: Math.min(5, activeAccounts.length)
     },
     {
       type: 'list',
@@ -743,7 +754,7 @@ async function handleRunRandomFeed() {
     }
   ]);
 
-  await Commenter.runRandomFeedCampaign(accounts, {
+  await Commenter.runRandomFeedCampaign(activeAccounts, {
     count: countPerAccount,
     commentTemplate: template,
     delaySeconds: delaySeconds || 15,
@@ -763,6 +774,17 @@ async function handleRunRandomReels() {
   const accounts = await getAccounts();
   if (accounts.length === 0) {
     logger.warn('Belum ada akun di sistem.');
+    return;
+  }
+
+  const limitedAccounts = accounts.filter(a => a.isLimited);
+  const activeAccounts = accounts.filter(a => !a.isLimited && a.enabled !== false);
+  if (limitedAccounts.length > 0) {
+    console.log(chalk.yellow(`\n⚠️ Terdeteksi ${limitedAccounts.length} akun dalam status LIMIT KOMENTAR: ${limitedAccounts.map(a => chalk.red(`[${a.id}] ${a.username}`)).join(', ')}`));
+    console.log(chalk.gray(`   └ Akun ini otomatis dilewati dan tidak akan dibuka browser-nya demi keamanan.\n`));
+  }
+  if (activeAccounts.length === 0) {
+    logger.error('Semua akun aktif saat ini sedang terkena limit komentar Facebook. Silakan reset limit akun terlebih dahulu.');
     return;
   }
 
@@ -844,8 +866,8 @@ async function handleRunRandomReels() {
     {
       type: 'number',
       name: 'concurrency',
-      message: `Berapa akun/browser yang berjalan bersamaan (Paralel)? (1 - ${accounts.length}):`,
-      default: Math.min(5, accounts.length)
+      message: `Berapa akun/browser yang berjalan bersamaan (Paralel)? (1 - ${activeAccounts.length}):`,
+      default: Math.min(5, activeAccounts.length)
     },
     {
       type: 'list',
@@ -859,7 +881,7 @@ async function handleRunRandomReels() {
     }
   ]);
 
-  await Commenter.runRandomReelsCampaign(accounts, {
+  await Commenter.runRandomReelsCampaign(activeAccounts, {
     count: countPerAccount,
     commentTemplate: template,
     delaySeconds: delaySeconds || 15,
@@ -877,6 +899,22 @@ async function handleRunRandomReels() {
  */
 async function handleRunTargetCampaign() {
   const accounts = await getAccounts();
+  if (accounts.length === 0) {
+    logger.warn('Belum ada akun di sistem.');
+    return;
+  }
+
+  const limitedAccounts = accounts.filter(a => a.isLimited);
+  const activeAccounts = accounts.filter(a => !a.isLimited && a.enabled !== false);
+  if (limitedAccounts.length > 0) {
+    console.log(chalk.yellow(`\n⚠️ Terdeteksi ${limitedAccounts.length} akun dalam status LIMIT KOMENTAR: ${limitedAccounts.map(a => chalk.red(`[${a.id}] ${a.username}`)).join(', ')}`));
+    console.log(chalk.gray(`   └ Akun ini otomatis dilewati dan tidak akan dibuka browser-nya demi keamanan.\n`));
+  }
+  if (activeAccounts.length === 0) {
+    logger.error('Semua akun aktif saat ini sedang terkena limit komentar Facebook. Silakan reset limit akun terlebih dahulu.');
+    return;
+  }
+
   let targets = await getTargets();
 
   const { mode } = await inquirer.prompt([
@@ -914,8 +952,8 @@ async function handleRunTargetCampaign() {
     {
       type: 'number',
       name: 'concurrency',
-      message: `Berapa browser yang berjalan bersamaan (Paralel)? (1 - ${accounts.length}):`,
-      default: Math.min(5, accounts.length)
+      message: `Berapa browser yang berjalan bersamaan (Paralel)? (1 - ${activeAccounts.length}):`,
+      default: Math.min(5, activeAccounts.length)
     },
     {
       type: 'list',
@@ -929,7 +967,7 @@ async function handleRunTargetCampaign() {
     }
   ]);
 
-  await Commenter.runCampaign(accounts, targets, { 
+  await Commenter.runCampaign(activeAccounts, targets, { 
     concurrency: Math.max(1, concurrency || 1),
     headless 
   });
