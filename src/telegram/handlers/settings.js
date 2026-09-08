@@ -233,7 +233,7 @@ export function registerSettingsHandlers(bot) {
   // Fitur Reset Riwayat Komentar (Hapus Riwayat Konten yang Pernah Dikomentari)
   bot.command("resethistory", async (ctx) => {
     if (campaignState.isRunning) return ctx.reply("⚠️ Bot sedang berjalan.");
-    clearCommentHistory();
+    await clearCommentHistory();
     await ctx.replyWithMarkdown("🧹 *Riwayat komentar berhasil direset!*\n\nSemua akun sekarang dapat mengomentari kembali video Reels atau postingan yang sebelumnya pernah dikomentari.");
   });
 
@@ -327,8 +327,24 @@ export function registerSettingsHandlers(bot) {
         [
           Markup.button.callback("👤 Profil Pribadi", "SET_IDENTITY_PERSONAL"),
           Markup.button.callback("🚩 Halaman (Fanspage)", "SET_IDENTITY_PAGE")
+        ],
+        [
+          Markup.button.callback("🏷️ Atur Nama Halaman Spesifik", "SET_TARGET_PAGE")
         ]
       ])
+    );
+  });
+
+  bot.action("SET_TARGET_PAGE", async (ctx) => {
+    await ctx.answerCbQuery();
+    if (campaignState.isRunning) {
+      return ctx.reply("⚠️ Pengaturan dikunci saat kampanye aktif.", getRunningKeyboard());
+    }
+    userStates.set(ctx.from.id, "AWAITING_TARGET_PAGE_NAME");
+    await ctx.reply(
+      "Silakan ketik nama Halaman Facebook (Fanspage) spesifik yang ingin digunakan untuk berkomentar.\n\n" +
+      "• Contoh: `Toko Online Sukses`\n" +
+      "• Ketik `-` atau `0` jika ingin bebas (halaman pertama yang ditemukan)."
     );
   });
 
@@ -363,9 +379,13 @@ export function registerSettingsHandlers(bot) {
     config.defaultSettings.commentAs = "PAGE";
     saveTelegramConfig(config);
 
+    const pageNote = config.defaultSettings?.targetPageName 
+      ? `\n• Halaman target: \`${config.defaultSettings.targetPageName}\`` 
+      : `\n• Halaman target: Otomatis halaman pertama`;
+
     await ctx.replyWithMarkdown(
       `✅ *Identitas komentar berhasil diatur ke:*\n` +
-        `🚩 *Halaman Facebook (Fanspage)*\n\n` +
+        `🚩 *Halaman Facebook (Fanspage)*${pageNote}\n\n` +
         `Bot akan otomatis beralih (*switch profile*) ke Halaman Facebook yang dikelola oleh akun sebelum berkomentar di Reels atau Beranda.`
     );
   });
@@ -377,13 +397,18 @@ export function registerSettingsHandlers(bot) {
 
     const parts = ctx.message.text.split(" ");
     const choice = parts[1]?.toLowerCase().trim();
+    const specificPage = parts.slice(2).join(" ").trim();
 
     if (choice === "page" || choice === "halaman") {
       let config = loadTelegramConfig();
       if (!config.defaultSettings) config.defaultSettings = {};
       config.defaultSettings.commentAs = "PAGE";
+      if (specificPage) {
+        config.defaultSettings.targetPageName = specificPage;
+      }
       saveTelegramConfig(config);
-      return ctx.replyWithMarkdown(`✅ *Identitas berhasil diatur ke:* 🚩 *Halaman Facebook (Fanspage)*`);
+      const note = specificPage ? ` (Target: \`${specificPage}\`)` : "";
+      return ctx.replyWithMarkdown(`✅ *Identitas berhasil diatur ke:* 🚩 *Halaman Facebook (Fanspage)*${note}`);
     } else if (choice === "personal" || choice === "profil" || choice === "akun") {
       let config = loadTelegramConfig();
       if (!config.defaultSettings) config.defaultSettings = {};
@@ -391,7 +416,50 @@ export function registerSettingsHandlers(bot) {
       saveTelegramConfig(config);
       return ctx.replyWithMarkdown(`✅ *Identitas berhasil diatur ke:* 👤 *Profil Pribadi*`);
     } else {
-      return ctx.reply("Format: /setidentity <personal|page>\nContoh: /setidentity page");
+      return ctx.reply("Format: /setidentity <personal|page> [nama_halaman]\nContoh: /setidentity page\nContoh: /setidentity page Toko Baju Murah");
     }
+  });
+
+  bot.command(["setpage", "page"], async (ctx) => {
+    if (campaignState.isRunning) {
+      return ctx.reply("⚠️ Pengaturan dikunci saat kampanye aktif.", getRunningKeyboard());
+    }
+
+    const pageName = ctx.message.text.replace(/\/setpage|\/page/i, "").trim();
+    let config = loadTelegramConfig();
+    if (!config.defaultSettings) config.defaultSettings = {};
+
+    if (!pageName || pageName === "-" || pageName === "0" || pageName.toLowerCase() === "bebas") {
+      config.defaultSettings.targetPageName = "";
+      saveTelegramConfig(config);
+      return ctx.replyWithMarkdown("✅ *Target nama Halaman Facebook direset ke bebas (halaman pertama akun).*");
+    } else {
+      config.defaultSettings.commentAs = "PAGE";
+      config.defaultSettings.targetPageName = pageName;
+      saveTelegramConfig(config);
+      return ctx.replyWithMarkdown(
+        `✅ *Target Halaman Facebook spesifik berhasil diatur ke:*\n🚩 \`${pageName}\`\n\n_(Identitas otomatis diaktifkan sebagai Halaman/Fanspage)_`
+      );
+    }
+  });
+
+  bot.command("status", async (ctx) => {
+    if (!campaignState.isRunning) {
+      return ctx.reply("⚪ Tidak ada kampanye yang sedang berjalan saat ini (Bot Standby).", getMainKeyboard());
+    }
+
+    const targetText =
+      campaignState.info.target === 0
+        ? "Non-Stop Loop"
+        : `${campaignState.info.target} target`;
+    await ctx.replyWithMarkdown(
+      `📊 *Status Kampanye Berjalan:*\n` +
+        `- Mode: *${campaignState.info.mode}*\n` +
+        `- Akun Aktif: *${campaignState.info.currentAccount}*\n` +
+        `- Progres: *${campaignState.info.completed} terkirim* (Target: ${targetText})\n` +
+        `- Status: 🟢 *Sedang Bekerja*\n\n` +
+        `_Ketik /stop atau klik tombol Stop di bawah untuk menghentikan._`,
+      getRunningKeyboard()
+    );
   });
 }

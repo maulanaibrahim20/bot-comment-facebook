@@ -1,7 +1,7 @@
 import { chromium } from 'playwright-extra';
 import stealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fs from 'fs';
-import { paths, getSettings } from './config.js';
+import { paths, getSettings, saveAccountSession, getAccountSession } from './config.js';
 import { logger } from './utils/logger.js';
 
 // Pasang plugin stealth untuk menyamarkan fingerprint browser
@@ -23,12 +23,26 @@ process.on('SIGINT', async () => {
  * Membuat instance browser Playwright dengan Persistent Context terisolasi per akun
  */
 export async function createAccountBrowserContext(account, options = {}) {
-  const settings = getSettings();
+  const settings = await getSettings();
   const sessionPath = paths.getSessionFilePath(account.id);
   const profileDir = paths.getProfileDir(account.id);
 
   if (!fs.existsSync(profileDir)) {
     fs.mkdirSync(profileDir, { recursive: true });
+  }
+
+  // Jika file session lokal belum ada tapi di database ada sessionData, pulihkan ke file lokal
+  if (!fs.existsSync(sessionPath)) {
+    let sessionData = account.sessionData;
+    if (!sessionData) {
+      sessionData = await getAccountSession(account.id);
+    }
+    if (sessionData) {
+      try {
+        fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+        logger.account(account.id, 'Sesi dipulihkan dari database MySQL ke file lokal.');
+      } catch (e) {}
+    }
   }
 
   // Konfigurasi proxy jika akun memiliki setting proxy
@@ -81,7 +95,10 @@ export async function createAccountBrowserContext(account, options = {}) {
     isClosed = true;
     activeContexts.delete(context);
     try {
-      await context.storageState({ path: sessionPath }).catch(() => {});
+      const state = await context.storageState({ path: sessionPath }).catch(() => null);
+      if (state) {
+        await saveAccountSession(account.id, state).catch(() => {});
+      }
       await context.close();
     } catch (e) {}
   };

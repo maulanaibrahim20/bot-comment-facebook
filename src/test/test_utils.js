@@ -53,9 +53,9 @@ assertTest('2FA TOTP Generator', otp && otp.length === 6 && /^\d+$/.test(otp));
 
 // 5. Test Pemuatan Konfigurasi Sistem
 console.log('\n5. Menguji Pemuatan Konfigurasi Sistem:');
-const accounts = getAccounts();
-const targets = getTargets();
-const settings = getSettings();
+const accounts = await getAccounts();
+const targets = await getTargets();
+const settings = await getSettings();
 console.log(`- Jumlah Akun aktif: ${accounts.length}`);
 console.log(`- Jumlah Target URL: ${targets.length}`);
 console.log(`- Viewport Browser: ${settings.browser.viewport.width}x${settings.browser.viewport.height}`);
@@ -64,13 +64,15 @@ assertTest('Pemuatan Konfigurasi', accounts !== null && targets !== null && sett
 // 6. Test Bulk Import & Parser
 console.log('\n6. Menguji Bulk Account Parser & Auto-Delete:');
 const testBulkString = `test_bulk1@gmail.com|pass123|JBSWY3DPEHPK3PXP|http://127.0.0.1:8080\ntest_bulk2@gmail.com|pass456`;
-const parsedAccounts = bulkImportAccounts(testBulkString);
+const parsedAccounts = await bulkImportAccounts(testBulkString);
 console.log(`- Berhasil import ${parsedAccounts.length} akun dummy untuk pengujian`);
 assertTest('Bulk Account Import', parsedAccounts.length === 2);
 
 // Hapus akun dummy test
-parsedAccounts.forEach(acc => deleteAccount(acc.id));
-const accountsAfterDelete = getAccounts();
+for (const acc of parsedAccounts) {
+  await deleteAccount(acc.id, false);
+}
+const accountsAfterDelete = await getAccounts();
 assertTest('Pembersihan Akun Test', accountsAfterDelete.find(a => a.username === 'test_bulk1@gmail.com') === undefined);
 
 // 7. Test Delay Helper

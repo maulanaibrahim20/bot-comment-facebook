@@ -5,7 +5,7 @@ import { campaignState, setCampaignRunning, userStates, manualOtpStore } from ".
 import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
 
 export async function executeLoginAccounts(ctx, targetId = "all") {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   const targetAccounts = targetId && targetId !== "all"
     ? accounts.filter(a => a.id === targetId || a.username === targetId)
     : accounts;

@@ -167,7 +167,7 @@ export class FeedCommenter {
       if (
         accountId &&
         postInfo.id &&
-        hasAccountCommentedOn(accountId, postInfo.id)
+        (await hasAccountCommentedOn(accountId, postInfo.id))
       ) {
         logger.info(
           `⏩ [${accountId}] Postingan beranda ini sudah pernah Anda komentari. Melewati ke postingan lain...`,
@@ -182,7 +182,7 @@ export class FeedCommenter {
         );
         if (postInfo.id) {
           processedSet.add(postInfo.id);
-          if (accountId) markCommentedHistory(accountId, postInfo.id);
+          if (accountId) await markCommentedHistory(accountId, postInfo.id);
         }
         continue;
       }
@@ -360,7 +360,7 @@ export class FeedCommenter {
       .catch(() => {});
 
     if (accountId && selectedPostId) {
-      markCommentedHistory(accountId, selectedPostId);
+      await markCommentedHistory(accountId, selectedPostId);
     }
 
     await randomDelay(1200, 2000);
@@ -373,7 +373,7 @@ export class FeedCommenter {
    * Menjalankan aksi komentar pada POSTINGAN ACAK di Beranda / Feed akun tersebut
    */
   static async postRandomFeedComments(account, options = {}) {
-    const settings = getSettings();
+    const settings = await getSettings();
     const countToComment = options.count !== undefined ? options.count : 10;
     const isUnlimited = countToComment === 0 || countToComment === -1;
     const targetCountText = isUnlimited
@@ -510,7 +510,7 @@ export class FeedCommenter {
         if (await CommentGuard.checkIsActionBlocked(page)) {
           isBlocked = true;
           blockedReason = "Pop-up pembatasan / limit komentar Facebook";
-          markAccountLimited(account.id, blockedReason);
+          await markAccountLimited(account.id, blockedReason);
           logger.error(
             `🛑 [${account.id}] Terkena limit pembatasan komentar Facebook.`,
           );
@@ -543,7 +543,7 @@ export class FeedCommenter {
           isBlocked = true;
           blockedReason =
             "Terdeteksi pembatasan komentar Facebook: Tidak Ada Izin untuk Menambahkan Komentar / Limit Tercapai";
-          markAccountLimited(account.id, blockedReason);
+          await markAccountLimited(account.id, blockedReason);
           logger.error(`🛑 [${account.id}] ${blockedReason}.`);
           logger.error(
             `🛑 [${account.id}] Bot otomatis berhenti dan langsung menutup browser sekarang demi keamanan akun.`,
@@ -626,7 +626,7 @@ export class FeedCommenter {
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             isBlocked = true;
             blockedReason = `Gagal mengirim komentar ${MAX_CONSECUTIVE_FAILURES}x berturut-turut di Beranda (Indikasi limit / shadowban Facebook)`;
-            markAccountLimited(account.id, blockedReason);
+            await markAccountLimited(account.id, blockedReason);
             logger.error(
               `🛑 [${account.id}] ${blockedReason}. Bot otomatis berhenti pada akun ini demi keamanan.`,
             );
@@ -672,7 +672,7 @@ export class FeedCommenter {
    * Menjalankan kampanye acak untuk semua akun di Beranda masing-masing
    */
   static async runRandomFeedCampaign(accounts, options = {}) {
-    const settings = getSettings();
+    const settings = await getSettings();
     const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
     const concurrency = options.concurrency || 1;
 

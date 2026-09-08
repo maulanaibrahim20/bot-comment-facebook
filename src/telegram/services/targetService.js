@@ -13,7 +13,7 @@ import { getRunningKeyboard, getMainKeyboard } from "../keyboards.js";
  * Menjalankan komentar ke postingan target spesifik (URL)
  */
 export async function executeTargetCampaign(ctx, postUrl = null) {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   const activeAccounts = accounts.filter((acc) => acc.enabled !== false);
   if (activeAccounts.length === 0) {
     return ctx.reply("⚠️ Belum ada akun aktif di sistem. Silakan tambah akun terlebih dahulu.");
@@ -27,7 +27,7 @@ export async function executeTargetCampaign(ctx, postUrl = null) {
   if (postUrl) {
     targets = [{ id: "direct_target", postUrl, commentTemplate: template, active: true }];
   } else {
-    targets = getTargets().filter(t => t.active !== false);
+    targets = (await getTargets()).filter(t => t.active !== false);
   }
 
   if (targets.length === 0) {

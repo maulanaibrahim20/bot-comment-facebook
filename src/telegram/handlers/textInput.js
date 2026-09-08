@@ -76,6 +76,30 @@ export function registerTextInputHandler(bot) {
       );
     }
 
+    if (state === "AWAITING_TARGET_PAGE_NAME") {
+      userStates.delete(ctx.from.id);
+      const pageName = ctx.message.text.trim();
+      let config = loadTelegramConfig();
+      if (!config.defaultSettings) config.defaultSettings = {};
+
+      if (!pageName || pageName === "-" || pageName === "0" || pageName.toLowerCase() === "bebas") {
+        config.defaultSettings.targetPageName = "";
+        saveTelegramConfig(config);
+        return ctx.replyWithMarkdown(
+          "✅ *Target nama Halaman Facebook direset ke bebas (halaman pertama akun).*",
+          getMainKeyboard()
+        );
+      } else {
+        config.defaultSettings.commentAs = "PAGE";
+        config.defaultSettings.targetPageName = pageName;
+        saveTelegramConfig(config);
+        return ctx.replyWithMarkdown(
+          `✅ *Target Halaman Facebook spesifik berhasil diatur ke:*\n🚩 \`${pageName}\`\n\n_(Identitas otomatis diaktifkan sebagai Halaman/Fanspage)_`,
+          getMainKeyboard()
+        );
+      }
+    }
+
     if (state === "AWAITING_TARGET_URL") {
       userStates.delete(ctx.from.id);
       const url = ctx.message.text.trim();
@@ -121,7 +145,7 @@ export function registerTextInputHandler(bot) {
     if (state === "AWAITING_NEW_ACCOUNT") {
       userStates.delete(ctx.from.id);
       const data = ctx.message.text.trim();
-      const imported = bulkImportAccounts(data);
+      const imported = await bulkImportAccounts(data);
       if (imported.length > 0) {
         return ctx.replyWithMarkdown(
           `✅ *Berhasil menambahkan ${imported.length} akun!*\n` +

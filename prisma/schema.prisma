@@ -1,0 +1,69 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Account {
+  id               String           @id
+  name             String           @default("")
+  username         String           @unique
+  password         String
+  twoFactorSecret  String?          @map("two_factor_secret")
+  proxy            Json?
+  enabled          Boolean          @default(true)
+  isLimited        Boolean          @default(false) @map("is_limited")
+  limitedAt        DateTime?        @map("limited_at")
+  limitReason      String?          @map("limit_reason")
+  note             String?          @db.Text
+  sessionData      Json?            @map("session_data")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  commentHistories CommentHistory[]
+
+  @@map("accounts")
+}
+
+model Target {
+  id              String   @id
+  postUrl         String   @db.Text @map("post_url")
+  commentTemplate String   @db.Text @map("comment_template")
+  description     String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("targets")
+}
+
+model CommentHistory {
+  id        Int      @id @default(autoincrement())
+  accountId String   @map("account_id")
+  targetKey String   @map("target_key")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, targetKey], name: "account_target_unique")
+  @@index([accountId])
+  @@map("comment_history")
+}
+
+model BotSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("bot_settings")
+}
+
+model TelegramConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("telegram_config")
+}

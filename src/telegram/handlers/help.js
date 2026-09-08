@@ -6,7 +6,7 @@ import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
 export function registerHelpHandlers(bot) {
   bot.start(async (ctx) => {
     userStates.delete(ctx.from.id);
-    const accounts = getAccounts();
+    const accounts = await getAccounts();
     const config = loadTelegramConfig();
     const activeComment =
       config.defaultSettings?.customComment ||
@@ -36,7 +36,7 @@ export function registerHelpHandlers(bot) {
     await ctx.replyWithMarkdown(welcomeText, getMainKeyboard());
   });
 
-  bot.hears("ℹ️ Bantuan", async (ctx) => {
+  const sendHelp = async (ctx) => {
     userStates.delete(ctx.from.id);
     if (campaignState.isRunning) {
       return ctx.reply(
@@ -59,9 +59,11 @@ export function registerHelpHandlers(bot) {
       `• *🩺 Cek Status Sesi*: Health check akun & verifikasi login Facebook.\n` +
       `• *🛑 Stop Kampanye*: Menghentikan bot secara aman.\n\n` +
       `*Perintah Cepat (Slash Commands):*\n` +
+      `• \`/status\` - Cek status kampanye aktif & progres\n` +
       `• \`/reels [jumlah]\` - Komentar Reels\n` +
       `• \`/feed [jumlah]\` - Komentar Beranda\n` +
       `• \`/target <url>\` - Komentar ke URL target langsung\n` +
+      `• \`/targets\` - Lihat semua daftar target URL tersimpan\n` +
       `• \`/spintax\` - Lihat 5 contoh variasi spintax\n` +
       `• \`/limited\` - Lihat daftar akun terkena limit\n` +
       `• \`/resetlimit\` - Reset status akun limit ke normal\n` +
@@ -71,9 +73,13 @@ export function registerHelpHandlers(bot) {
       `• \`/setcomment <teks>\` - Atur komentar default\n` +
       `• \`/setdelay <detik>\` - Atur jeda waktu default\n` +
       `• \`/setidentity <personal|page>\` - Atur identitas komentar\n` +
+      `• \`/setpage <nama_halaman>\` - Atur target Halaman Facebook spesifik\n` +
       `• \`/deleteaccount <id>\` - Hapus akun\n` +
       `• \`/stop\` - Hentikan bot`;
 
     await ctx.replyWithMarkdown(helpText);
-  });
+  };
+
+  bot.hears("ℹ️ Bantuan", sendHelp);
+  bot.command("help", sendHelp);
 }

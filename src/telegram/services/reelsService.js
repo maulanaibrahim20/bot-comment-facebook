@@ -12,7 +12,7 @@ import { getMainKeyboard, getRunningKeyboard } from "../keyboards.js";
 
 // Eksekusi Komentar Reels dengan Pelaporan Step-by-Step ke Telegram
 export async function executeReelsCampaign(ctx, count, overrideComment = null) {
-  const accounts = getAccounts();
+  const accounts = await getAccounts();
   const config = loadTelegramConfig();
   const template =
     overrideComment ||
